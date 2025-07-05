@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 
@@ -47,6 +46,59 @@ export const useFinancialData = () => {
     return new Date(year, month + 1, 0).getDate();
   };
 
+  // NEW: Get last December balance for year-end calculation
+  const calcularUltimoSaldoDezembro = useCallback((data: FinancialData, year: number): number => {
+    if (!data[year] || !data[year][11]) return 0;
+
+    const diasDezembro = Object.keys(data[year][11]).map(Number).sort((a, b) => b - a);
+    
+    for (const dia of diasDezembro) {
+      if (data[year][11][dia] && typeof data[year][11][dia].balance === 'number') {
+        console.log(`📊 Last December balance for ${year}: ${data[year][11][dia].balance} (day ${dia})`);
+        return data[year][11][dia].balance;
+      }
+    }
+    
+    return 0;
+  }, []);
+
+  // NEW: Global balance propagation across all years
+  const propagarSaldosEntreAnos = useCallback((currentData: FinancialData): FinancialData => {
+    console.log('🔄 Starting global balance propagation across all years');
+    
+    const newData = { ...currentData };
+    const anos = Object.keys(newData).map(Number).sort((a, b) => a - b);
+    
+    for (let i = 0; i < anos.length - 1; i++) {
+      const anoAtual = anos[i];
+      const proximoAno = anos[i + 1];
+      
+      // Get December 31st balance of current year
+      const saldoFinalDezembro = calcularUltimoSaldoDezembro(newData, anoAtual);
+      
+      if (saldoFinalDezembro !== 0 || Object.keys(newData[anoAtual]).length > 0) {
+        console.log(`🔗 Propagating balance from ${anoAtual} to ${proximoAno}: ${saldoFinalDezembro}`);
+        
+        // Initialize next year structure if needed
+        if (!newData[proximoAno]) newData[proximoAno] = {};
+        if (!newData[proximoAno][0]) newData[proximoAno][0] = {};
+        if (!newData[proximoAno][0][1]) {
+          newData[proximoAno][0][1] = {
+            entrada: "R$ 0,00",
+            saida: "R$ 0,00",
+            diario: "R$ 0,00",
+            balance: saldoFinalDezembro
+          };
+        } else {
+          // Update existing January 1st balance
+          newData[proximoAno][0][1].balance = saldoFinalDezembro;
+        }
+      }
+    }
+    
+    return newData;
+  }, [calcularUltimoSaldoDezembro]);
+
   const initializeMonth = useCallback((year: number, month: number): void => {
     console.log(`🏗️ Initializing month ${month + 1}/${year}`);
     
@@ -75,7 +127,6 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // CORE FUNCTION: Add transaction values to specific day
   const addToDay = useCallback((year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number): void => {
     console.log(`💰 Adding ${amount} to ${type} on ${year}-${month+1}-${day}`);
     
@@ -105,7 +156,6 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // CORE FUNCTION: Set day values directly (for manual input)
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
     const numericValue = parseCurrency(value);
     const formattedValue = formatCurrency(numericValue);
@@ -131,7 +181,6 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // IMPROVED: Get previous year-end balance for automatic propagation
   const getYearEndBalance = useCallback((year: number, currentData: FinancialData): number => {
     console.log(`🔍 Getting year-end balance for ${year}`);
     
@@ -159,7 +208,6 @@ export const useFinancialData = () => {
     return 0;
   }, []);
 
-  // CORE FUNCTION: Get previous day's balance for calculations with automatic year propagation
   const getPreviousBalance = useCallback((year: number, month: number, day: number, currentData: FinancialData): number => {
     if (day === 1) {
       if (month === 0) {
@@ -189,12 +237,11 @@ export const useFinancialData = () => {
     }
   }, [getYearEndBalance]);
 
-  // IMPROVED: Immediate and optimized balance recalculation with automatic year propagation
   const recalculateBalances = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
-    console.log(`🧮 IMMEDIATE balance recalculation from ${startYear || 'beginning'}-${(startMonth || 0) + 1}-${startDay || 1}`);
+    console.log(`🧮 IMMEDIATE balance recalculation with global propagation from ${startYear || 'beginning'}-${(startMonth || 0) + 1}-${startDay || 1}`);
     
     setData(prevData => {
-      const newData = { ...prevData };
+      let newData = { ...prevData };
       const years = Object.keys(newData).map(Number).sort();
       
       for (const year of years) {
@@ -227,9 +274,12 @@ export const useFinancialData = () => {
         }
       }
       
+      // Apply global year propagation after all calculations
+      newData = propagarSaldosEntreAnos(newData);
+      
       return newData;
     });
-  }, [getPreviousBalance]);
+  }, [getPreviousBalance, propagarSaldosEntreAnos]);
 
   const getMonthlyTotals = useCallback((year: number, month: number) => {
     if (!data[year] || !data[year][month]) {
@@ -315,6 +365,7 @@ export const useFinancialData = () => {
     formatCurrency,
     recalculateBalances,
     getPreviousBalance,
-    getYearEndBalance
+    getYearEndBalance,
+    propagarSaldosEntreAnos
   };
 };

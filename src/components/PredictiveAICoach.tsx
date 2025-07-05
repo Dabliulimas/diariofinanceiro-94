@@ -1,46 +1,34 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Brain, TrendingUp, AlertTriangle, Target, Zap, RefreshCw, DollarSign, Shield, Activity, CheckCircle, TrendingDown } from 'lucide-react';
-import { formatCurrency } from '../utils/currencyUtils';
-import * as tf from '@tensorflow/tfjs';
+import React, { useMemo } from 'react';
+import { FinancialData } from '../hooks/useFinancialData';
 
-interface PredictiveAICoachProps {
-  data: any;
-  selectedYear: number;
-  selectedMonth: number;
-  monthlyTotals: {
-    totalEntradas: number;
-    totalSaidas: number;
-    totalDiario: number;
-    saldoFinal: number;
-  };
-  emergencyReserve: {
-    amount: number;
-    months: number;
-  };
-  fixedExpenses: {
-    totalAmount: number;
-  };
+interface MonthlyTotals {
+  totalEntradas: number;
+  totalSaidas: number;
+  totalDiario: number;
+  saldoFinal: number;
 }
 
-interface PredictionData {
-  futureDays: Array<{
-    day: number;
-    predictedBalance: number;
-    confidence: number;
+interface EmergencyReserve {
+  amount: number;
+  months: number;
+}
+
+interface FixedExpenses {
+  totalAmount: number;
+  categories: Array<{
+    name: string;
+    amount: number;
   }>;
-  criticalDate?: {
-    day: number;
-    balance: number;
-  };
-  recommendations: Array<{
-    type: 'critical' | 'warning' | 'success' | 'info';
-    title: string;
-    message: string;
-    icon: string;
-  }>;
+}
+
+interface PredictiveAICoachProps {
+  data: FinancialData;
+  selectedYear: number;
+  selectedMonth: number;
+  monthlyTotals: MonthlyTotals;
+  emergencyReserve: EmergencyReserve;
+  fixedExpenses: FixedExpenses;
 }
 
 const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
@@ -51,483 +39,273 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
   emergencyReserve,
   fixedExpenses
 }) => {
-  const [predictions, setPredictions] = useState<PredictionData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [modelReady, setModelReady] = useState(false);
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
 
-  // Initialize TensorFlow.js
-  useEffect(() => {
-    const initTensorFlow = async () => {
-      try {
-        await tf.ready();
-        setModelReady(true);
-        console.log('🧠 TensorFlow.js ready for predictions');
-      } catch (error) {
-        console.error('❌ TensorFlow.js initialization failed:', error);
+  const insights = useMemo(() => {
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate();
+    const isCurrentMonth = selectedYear === currentDate.getFullYear() && selectedMonth === currentDate.getMonth();
+    
+    const insights = [];
+    
+    // ANÁLISE DE PADRÕES COMPORTAMENTAIS
+    const analyzeSpendingPatterns = () => {
+      const monthData = data[selectedYear]?.[selectedMonth];
+      if (!monthData) return [];
+      
+      const patterns = [];
+      const dailyExpenses = [];
+      
+      // Coletar gastos diários
+      for (let day = 1; day <= currentDay && day <= 31; day++) {
+        const dayData = monthData[day];
+        if (dayData) {
+          const dailySpent = parseCurrency(dayData.saida) + parseCurrency(dayData.diario);
+          dailyExpenses.push({ day, amount: dailySpent });
+        }
       }
+      
+      // Detectar padrões de gastos altos
+      const highSpendingDays = dailyExpenses.filter(d => d.amount > 200).length;
+      if (highSpendingDays > 5) {
+        patterns.push({
+          type: 'warning',
+          icon: '⚠️',
+          title: 'Padrão de Gastos Altos Detectado',
+          message: `Você teve ${highSpendingDays} dias com gastos acima de R$ 200,00. Considere revisar suas despesas para manter o controle financeiro.`
+        });
+      }
+      
+      // Detectar sequência de gastos crescentes
+      const recentDays = dailyExpenses.slice(-5);
+      const isIncreasingTrend = recentDays.length >= 3 && 
+        recentDays.every((day, index) => index === 0 || day.amount >= recentDays[index - 1].amount);
+      
+      if (isIncreasingTrend && recentDays[recentDays.length - 1].amount > 100) {
+        patterns.push({
+          type: 'alert',
+          icon: '📈',
+          title: 'Tendência de Gastos Crescente',
+          message: 'Seus gastos têm aumentado nos últimos dias. Hora de revisar o orçamento e controlar as despesas!'
+        });
+      }
+      
+      return patterns;
     };
     
-    initTensorFlow();
-  }, []);
-
-  // Extract historical data for training
-  const extractHistoricalData = useCallback(() => {
-    const historicalData: Array<{
-      entrada: number;
-      saida: number;
-      diario: number;
-      previousBalance: number;
-      resultingBalance: number;
-    }> = [];
-
-    if (!data[selectedYear]) return historicalData;
-
-    for (let month = 0; month <= selectedMonth; month++) {
-      if (data[selectedYear][month]) {
-        const monthData = data[selectedYear][month];
-        const days = Object.keys(monthData).map(Number).sort();
-        
-        for (const day of days) {
+    // PREVISÃO DE SALDO FUTURO
+    const predictFutureBalance = () => {
+      if (!isCurrentMonth) return [];
+      
+      const predictions = [];
+      const monthData = data[selectedYear]?.[selectedMonth];
+      
+      if (monthData) {
+        // Calcular média de gastos dos últimos 7 dias
+        const last7Days = [];
+        for (let day = Math.max(1, currentDay - 6); day <= currentDay; day++) {
           const dayData = monthData[day];
-          const entrada = parseFloat(dayData.entrada.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-          const saida = parseFloat(dayData.saida.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-          const diario = parseFloat(dayData.diario.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-          
-          // Get previous balance
-          let previousBalance = 0;
-          if (day === 1) {
-            if (month === 0) {
-              // Get from previous year if available
-              if (data[selectedYear - 1] && data[selectedYear - 1][11]) {
-                const prevYearLastMonth = data[selectedYear - 1][11];
-                const lastDay = Math.max(...Object.keys(prevYearLastMonth).map(Number));
-                previousBalance = prevYearLastMonth[lastDay]?.balance || 0;
-              }
-            } else {
-              // Get from previous month
-              if (data[selectedYear][month - 1]) {
-                const prevMonth = data[selectedYear][month - 1];
-                const lastDay = Math.max(...Object.keys(prevMonth).map(Number));
-                previousBalance = prevMonth[lastDay]?.balance || 0;
-              }
-            }
-          } else {
-            previousBalance = monthData[day - 1]?.balance || 0;
+          if (dayData) {
+            const dailySpent = parseCurrency(dayData.saida) + parseCurrency(dayData.diario);
+            const dailyIncome = parseCurrency(dayData.entrada);
+            last7Days.push({ spent: dailySpent, income: dailyIncome });
           }
-
-          if (entrada > 0 || saida > 0 || diario > 0) {
-            historicalData.push({
-              entrada,
-              saida,
-              diario,
-              previousBalance,
-              resultingBalance: dayData.balance
+        }
+        
+        if (last7Days.length >= 3) {
+          const avgDailySpent = last7Days.reduce((sum, day) => sum + day.spent, 0) / last7Days.length;
+          const avgDailyIncome = last7Days.reduce((sum, day) => sum + day.income, 0) / last7Days.length;
+          
+          // Projetar saldo para o final do mês
+          const daysRemaining = new Date(selectedYear, selectedMonth + 1, 0).getDate() - currentDay;
+          const projectedExpenses = avgDailySpent * daysRemaining;
+          const projectedIncome = avgDailyIncome * daysRemaining;
+          const projectedBalance = monthlyTotals.saldoFinal + projectedIncome - projectedExpenses;
+          
+          if (projectedBalance < 0) {
+            predictions.push({
+              type: 'critical',
+              icon: '🚨',
+              title: 'Alerta de Saldo Negativo',
+              message: `Baseado no seu padrão atual, seu saldo pode ficar negativo em ${formatCurrency(projectedBalance)} até o final do mês. Reduza gastos urgentemente!`
+            });
+          } else if (projectedBalance < 500) {
+            predictions.push({
+              type: 'warning',
+              icon: '⚠️',
+              title: 'Saldo Baixo Projetado',
+              message: `Projeção para fim do mês: ${formatCurrency(projectedBalance)}. Considere reduzir gastos para manter uma margem de segurança.`
+            });
+          } else {
+            predictions.push({
+              type: 'success',
+              icon: '✅',
+              title: 'Projeção Positiva',
+              message: `Ótima gestão! Projeção para fim do mês: ${formatCurrency(projectedBalance)}. Continue assim!`
             });
           }
         }
       }
-    }
-
-    return historicalData;
-  }, [data, selectedYear, selectedMonth]);
-
-  // Enhanced prediction algorithm with financial analysis
-  const generatePredictions = useCallback(async (): Promise<PredictionData> => {
-    const historicalData = extractHistoricalData();
-    
-    if (historicalData.length < 5) {
-      return {
-        futureDays: [],
-        recommendations: [{
-          type: 'info',
-          icon: '📊',
-          title: 'Dados Insuficientes',
-          message: 'Adicione mais lançamentos para receber previsões personalizadas baseadas no seu padrão financeiro.'
-        }]
-      };
-    }
-
-    // Calculate user patterns and financial health metrics
-    const avgEntrada = historicalData.reduce((sum, d) => sum + d.entrada, 0) / historicalData.length;
-    const avgSaida = historicalData.reduce((sum, d) => sum + d.saida, 0) / historicalData.length;
-    const avgDiario = historicalData.reduce((sum, d) => sum + d.diario, 0) / historicalData.length;
-    
-    // Financial health calculations
-    const netFlow = monthlyTotals.totalEntradas - monthlyTotals.totalSaidas - monthlyTotals.totalDiario;
-    const recommendedReserve = fixedExpenses.totalAmount * 6;
-    const reserveStatus = emergencyReserve.amount >= recommendedReserve;
-    const savingsRate = monthlyTotals.totalEntradas > 0 ? (netFlow / monthlyTotals.totalEntradas) * 100 : 0;
-    const expenseRatio = monthlyTotals.totalEntradas > 0 ? ((monthlyTotals.totalSaidas + monthlyTotals.totalDiario) / monthlyTotals.totalEntradas) * 100 : 0;
-    
-    // Get current balance
-    const currentDay = new Date().getDate();
-    const currentBalance = data[selectedYear]?.[selectedMonth]?.[currentDay]?.balance || monthlyTotals.saldoFinal;
-    
-    // Predict next 15 days
-    const futureDays: Array<{ day: number; predictedBalance: number; confidence: number }> = [];
-    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    let runningBalance = currentBalance;
-    let criticalDate: { day: number; balance: number } | undefined;
-
-    for (let day = currentDay + 1; day <= Math.min(currentDay + 15, daysInMonth); day++) {
-      // Apply learned patterns with some randomness
-      const dailyChange = avgEntrada - avgSaida - avgDiario;
-      const volatility = Math.random() * 0.3 - 0.15; // ±15% variation
-      const predictedChange = dailyChange * (1 + volatility);
       
-      runningBalance += predictedChange;
-      
-      const confidence = Math.max(0.5, 1 - (day - currentDay) * 0.05); // Decreasing confidence
-      
-      futureDays.push({
-        day,
-        predictedBalance: runningBalance,
-        confidence
-      });
-
-      // Check for critical negative balance
-      if (runningBalance < 0 && !criticalDate) {
-        criticalDate = { day, balance: runningBalance };
-      }
-    }
-
-    // Generate comprehensive intelligent recommendations
-    const recommendations: PredictionData['recommendations'] = [];
-
-    // Main financial health insight (combining the old EnhancedInsights logic)
-    if (netFlow > 0 && reserveStatus) {
-      recommendations.push({
-        type: 'success',
-        icon: '🎉',
-        title: 'Situação Financeira Excelente',
-        message: `Fluxo positivo de ${formatCurrency(netFlow)} e reserva adequada. Considere investir o excedente para multiplicar seus ganhos.`
-      });
-    } else if (netFlow > 0 && !reserveStatus) {
-      recommendations.push({
-        type: 'info',
-        icon: '🎯',
-        title: 'Fluxo Positivo - Fortaleça sua Reserva',
-        message: `Excelente fluxo de ${formatCurrency(netFlow)}! Priorize completar sua reserva de emergência (atual: ${formatCurrency(emergencyReserve.amount)} | meta: ${formatCurrency(recommendedReserve)}).`
-      });
-    } else if (netFlow < 0 && reserveStatus) {
-      recommendations.push({
-        type: 'warning',
-        icon: '⚠️',
-        title: 'Gastos Altos - Reserva Protegida',
-        message: `Déficit de ${formatCurrency(Math.abs(netFlow))}, mas sua reserva está adequada. Revise despesas para voltar ao equilíbrio.`
-      });
-    } else {
-      recommendations.push({
-        type: 'critical',
-        icon: '🚨',
-        title: 'Atenção: Situação Crítica',
-        message: `Déficit de ${formatCurrency(Math.abs(netFlow))} e reserva insuficiente. Ação urgente necessária para cortar gastos.`
-      });
-    }
-
-    // Critical alerts
-    if (criticalDate) {
-      recommendations.push({
-        type: 'critical',
-        icon: '🚨',
-        title: 'Alerta Crítico de Saldo',
-        message: `Previsão: seu saldo ficará negativo no dia ${criticalDate.day} (${formatCurrency(criticalDate.balance)}). Reduza gastos urgentemente!`
-      });
-    }
-
-    // Savings rate analysis
-    if (savingsRate >= 20) {
-      recommendations.push({
-        type: 'success',
-        icon: '💰',
-        title: 'Taxa de Poupança Excepcional',
-        message: `Parabéns! Você está poupando ${savingsRate.toFixed(1)}% da receita. Continue assim e considere diversificar investimentos.`
-      });
-    } else if (savingsRate >= 10) {
-      recommendations.push({
-        type: 'info',
-        icon: '📈',
-        title: 'Boa Taxa de Poupança',
-        message: `Taxa de poupança de ${savingsRate.toFixed(1)}% é saudável. Tente aumentar gradualmente para 20% para acelerar seus objetivos.`
-      });
-    } else if (savingsRate > 0) {
-      recommendations.push({
-        type: 'warning',
-        icon: '⚡',
-        title: 'Taxa de Poupança Baixa',
-        message: `Taxa de poupança de ${savingsRate.toFixed(1)}% está abaixo do ideal. Meta: pelo menos 10% da receita.`
-      });
-    }
-
-    // Expense ratio analysis
-    if (expenseRatio > 90) {
-      recommendations.push({
-        type: 'warning',
-        icon: '📊',
-        title: 'Gastos Muito Altos',
-        message: `Seus gastos representam ${expenseRatio.toFixed(1)}% da receita. Risco alto de endividamento - revise despesas não essenciais.`
-      });
-    }
-
-    // Emergency reserve analysis
-    if (emergencyReserve.amount < fixedExpenses.totalAmount * 3) {
-      const currentMonths = emergencyReserve.amount / fixedExpenses.totalAmount;
-      recommendations.push({
-        type: 'warning',
-        icon: '🛡️',
-        title: 'Reserva de Emergência Insuficiente',
-        message: `Sua reserva cobre apenas ${currentMonths.toFixed(1)} meses de gastos fixos. Meta recomendada: 6 meses (${formatCurrency(recommendedReserve)}).`
-      });
-    }
-
-    // Spending trend analysis
-    const recentData = historicalData.slice(-7); // Last 7 entries
-    const olderData = historicalData.slice(-14, -7); // Previous 7 entries
-    
-    if (recentData.length >= 3 && olderData.length >= 3) {
-      const recentAvgSpending = recentData.reduce((sum, d) => sum + d.saida + d.diario, 0) / recentData.length;
-      const olderAvgSpending = olderData.reduce((sum, d) => sum + d.saida + d.diario, 0) / olderData.length;
-      
-      if (recentAvgSpending > olderAvgSpending * 1.2) {
-        recommendations.push({
-          type: 'warning',
-          icon: '📈',
-          title: 'Tendência de Gastos Crescente',
-          message: `Seus gastos aumentaram ${(((recentAvgSpending / olderAvgSpending) - 1) * 100).toFixed(1)}% recentemente. Avalie se isso é sustentável.`
-        });
-      } else if (recentAvgSpending < olderAvgSpending * 0.8) {
-        recommendations.push({
-          type: 'success',
-          icon: '📉',
-          title: 'Redução Inteligente de Gastos',
-          message: `Excelente! Você reduziu gastos em ${(((olderAvgSpending / recentAvgSpending) - 1) * 100).toFixed(1)}% recentemente. Continue assim!`
-        });
-      }
-    }
-
-    return {
-      futureDays,
-      criticalDate,
-      recommendations
+      return predictions;
     };
-  }, [extractHistoricalData, data, selectedYear, selectedMonth, monthlyTotals, emergencyReserve, fixedExpenses]);
-
-  // Generate predictions when data changes
-  useEffect(() => {
-    if (modelReady && monthlyTotals.totalEntradas > 0) {
-      setIsLoading(true);
-      generatePredictions()
-        .then(setPredictions)
-        .finally(() => setIsLoading(false));
-    }
-  }, [modelReady, generatePredictions, monthlyTotals]);
-
-  const handleRefreshPredictions = () => {
-    if (!modelReady) return;
     
-    setIsLoading(true);
-    generatePredictions()
-      .then(setPredictions)
-      .finally(() => setIsLoading(false));
+    // ANÁLISE DA RESERVA DE EMERGÊNCIA
+    const analyzeEmergencyReserve = () => {
+      const reserveAnalysis = [];
+      const monthlyExpenses = fixedExpenses.totalAmount;
+      const idealReserve = monthlyExpenses * 6; // 6 meses de reserva
+      
+      if (emergencyReserve.amount < monthlyExpenses) {
+        reserveAnalysis.push({
+          type: 'critical',
+          icon: '🛡️',
+          title: 'Reserva de Emergência Crítica',
+          message: `Sua reserva de ${formatCurrency(emergencyReserve.amount)} não cobre nem 1 mês de gastos fixos. Meta: ${formatCurrency(idealReserve)}.`
+        });
+      } else if (emergencyReserve.amount < idealReserve) {
+        const monthsCovered = Math.floor(emergencyReserve.amount / monthlyExpenses);
+        reserveAnalysis.push({
+          type: 'warning',
+          icon: '🛡️',
+          title: 'Reserva Insuficiente',
+          message: `Sua reserva cobre ${monthsCovered} meses. Recomendamos 6 meses de gastos fixos (${formatCurrency(idealReserve)}).`
+        });
+      } else {
+        reserveAnalysis.push({
+          type: 'success',
+          icon: '🛡️',
+          title: 'Reserva Adequada',
+          message: 'Parabéns! Sua reserva de emergência está em um nível seguro para cobrir imprevistos.'
+        });
+      }
+      
+      return reserveAnalysis;
+    };
+    
+    // COACHING PERSONALIZADO BASEADO EM DADOS
+    const generatePersonalizedCoaching = () => {
+      const coaching = [];
+      
+      // Análise de proporção entrada vs saída
+      const totalIncome = monthlyTotals.totalEntradas;
+      const totalExpenses = monthlyTotals.totalSaidas + monthlyTotals.totalDiario;
+      
+      if (totalIncome > 0) {
+        const expenseRatio = (totalExpenses / totalIncome) * 100;
+        
+        if (expenseRatio > 90) {
+          coaching.push({
+            type: 'alert',
+            icon: '💡',
+            title: 'Coach Financeiro - Gasto Excessivo',
+            message: `Você está gastando ${expenseRatio.toFixed(1)}% da sua renda. Tente manter abaixo de 80% para ter margem de poupança.`
+          });
+        } else if (expenseRatio < 60) {
+          coaching.push({
+            type: 'success',
+            icon: '🎯',
+            title: 'Coach Financeiro - Excelente Controle',
+            message: `Fantástico! Você está gastando apenas ${expenseRatio.toFixed(1)}% da sua renda. Considere investir o excedente.`
+          });
+        }
+      }
+      
+      // Sugestões baseadas no histórico
+      const hasHighDailyExpenses = monthlyTotals.totalDiario > monthlyTotals.totalSaidas * 0.5;
+      if (hasHighDailyExpenses) {
+        coaching.push({
+          type: 'suggestion',
+          icon: '📝',
+          title: 'Dica do Coach - Gastos Diários',
+          message: 'Seus gastos diários são significativos. Tente planejar refeições e compras para reduzir custos impulsivos.'
+        });
+      }
+      
+      return coaching;
+    };
+
+    // Função auxiliar para parse de moeda
+    const parseCurrency = (value: string): number => {
+      if (!value) return 0;
+      return parseFloat(value.replace(/[^\d,-]/g, '').replace(',', '.')) || 0;
+    };
+
+    // Combinar todas as análises
+    insights.push(...analyzeSpendingPatterns());
+    insights.push(...predictFutureBalance());
+    insights.push(...analyzeEmergencyReserve());
+    insights.push(...generatePersonalizedCoaching());
+    
+    return insights;
+  }, [data, selectedYear, selectedMonth, monthlyTotals, emergencyReserve, fixedExpenses]);
+
+  const getInsightColor = (type: string) => {
+    switch (type) {
+      case 'critical': return 'bg-red-50 border-red-200 text-red-800';
+      case 'alert': return 'bg-orange-50 border-orange-200 text-orange-800';
+      case 'warning': return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+      case 'success': return 'bg-green-50 border-green-200 text-green-800';
+      case 'suggestion': return 'bg-blue-50 border-blue-200 text-blue-800';
+      default: return 'bg-gray-50 border-gray-200 text-gray-800';
+    }
   };
 
-  if (!modelReady) {
+  if (insights.length === 0) {
     return (
-      <Card className="mb-6 border-l-4 border-l-purple-500">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin">
-              <Brain className="w-6 h-6 text-purple-600" />
-            </div>
-            <span className="text-purple-700 font-medium">Inicializando IA Coach...</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 mb-8 border border-green-200">
+        <div className="text-center">
+          <span className="text-3xl">🤖</span>
+          <h3 className="text-lg font-bold text-green-800 mt-2 mb-2">
+            Coach IA Preditivo
+          </h3>
+          <p className="text-green-700">
+            Continue registrando seus dados para receber análises personalizadas e previsões inteligentes!
+          </p>
+        </div>
+      </div>
     );
   }
 
-  // Calculate financial metrics for quick stats
-  const netFlow = monthlyTotals.totalEntradas - monthlyTotals.totalSaidas - monthlyTotals.totalDiario;
-  const savingsRate = monthlyTotals.totalEntradas > 0 ? (netFlow / monthlyTotals.totalEntradas) * 100 : 0;
-  const expenseRatio = monthlyTotals.totalEntradas > 0 ? ((monthlyTotals.totalSaidas + monthlyTotals.totalDiario) / monthlyTotals.totalEntradas) * 100 : 0;
-
   return (
-    <div className="mb-6 space-y-4">
-      {/* Header */}
-      <Card className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Brain className="w-7 h-7" />
-              <div>
-                <h3 className="text-xl font-bold">IA Coach Preditiva</h3>
-                <p className="text-purple-100 text-sm">Análise inteligente e previsões financeiras personalizadas</p>
-              </div>
-            </div>
-            <Button
-              onClick={handleRefreshPredictions}
-              disabled={isLoading}
-              variant="secondary"
-              size="sm"
-              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-          </CardTitle>
-        </CardHeader>
-      </Card>
-
-      {/* Quick Financial Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-green-600 font-medium">Fluxo Mensal</p>
-                <p className={`text-lg font-bold ${netFlow >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {formatCurrency(netFlow)}
-                </p>
-              </div>
-              <DollarSign className="w-8 h-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-purple-600 font-medium">Taxa de Poupança</p>
-                <p className="text-lg font-bold text-purple-700">
-                  {savingsRate >= 0 ? `+${savingsRate.toFixed(1)}%` : `${savingsRate.toFixed(1)}%`}
-                </p>
-              </div>
-              <Activity className="w-8 h-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-blue-600 font-medium">Reserva</p>
-                <p className="text-lg font-bold text-blue-700">
-                  {formatCurrency(emergencyReserve.amount)}
-                </p>
-              </div>
-              <Shield className="w-8 h-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
+    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 mb-8 border border-purple-200 shadow-lg">
+      <div className="text-center mb-6">
+        <span className="text-3xl">🤖</span>
+        <h3 className="text-xl font-bold text-purple-800 mt-2 mb-1">
+          Coach IA Preditivo
+        </h3>
+        <p className="text-sm text-purple-600">
+          Análise Inteligente • Previsões Personalizadas • Coaching Adaptativo
+        </p>
       </div>
 
-      {/* Predictions Display */}
-      {predictions && (
-        <>
-          {/* Future Balance Predictions */}
-          {predictions.futureDays.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
-                  Previsão de Saldo (Próximos 15 dias)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {predictions.futureDays.slice(0, 6).map((prediction) => (
-                    <div
-                      key={prediction.day}
-                      className={`p-3 rounded-lg border ${
-                        prediction.predictedBalance < 0 
-                          ? 'bg-red-50 border-red-200' 
-                          : 'bg-green-50 border-green-200'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-700">Dia {prediction.day}</span>
-                        <span className={`text-sm px-2 py-1 rounded ${
-                          prediction.confidence > 0.8 ? 'bg-green-100 text-green-700' :
-                          prediction.confidence > 0.6 ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-orange-100 text-orange-700'
-                        }`}>
-                          {(prediction.confidence * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      <div className={`text-lg font-bold ${
-                        prediction.predictedBalance < 0 ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {formatCurrency(prediction.predictedBalance)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* AI Recommendations */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-purple-600" />
-                Análises e Recomendações Inteligentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {predictions.recommendations.map((rec, index) => (
-                  <div
-                    key={index}
-                    className={`p-4 rounded-lg border-l-4 ${
-                      rec.type === 'critical' ? 'border-l-red-500 bg-red-50' :
-                      rec.type === 'warning' ? 'border-l-orange-500 bg-orange-50' :
-                      rec.type === 'success' ? 'border-l-green-500 bg-green-50' :
-                      'border-l-blue-500 bg-blue-50'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">{rec.icon}</span>
-                      <div className="flex-1">
-                        <h4 className={`font-semibold ${
-                          rec.type === 'critical' ? 'text-red-900' :
-                          rec.type === 'warning' ? 'text-orange-900' :
-                          rec.type === 'success' ? 'text-green-900' :
-                          'text-blue-900'
-                        }`}>
-                          {rec.title}
-                        </h4>
-                        <p className={`text-sm mt-1 ${
-                          rec.type === 'critical' ? 'text-red-700' :
-                          rec.type === 'warning' ? 'text-orange-700' :
-                          rec.type === 'success' ? 'text-green-700' :
-                          'text-blue-700'
-                        }`}>
-                          {rec.message}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {insights.map((insight, index) => (
+          <div
+            key={index}
+            className={`rounded-lg p-4 border-2 ${getInsightColor(insight.type)} transition-all duration-200 hover:shadow-md`}
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-2xl flex-shrink-0 mt-1">{insight.icon}</span>
+              <div className="flex-1">
+                <h4 className="font-semibold text-sm mb-2">{insight.title}</h4>
+                <p className="text-sm leading-relaxed">{insight.message}</p>
               </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
-
-      {isLoading && (
-        <Card>
-          <CardContent className="p-6 text-center">
-            <div className="flex items-center justify-center gap-3">
-              <div className="animate-spin">
-                <Zap className="w-6 h-6 text-purple-600" />
-              </div>
-              <span className="text-purple-700 font-medium">Analisando padrões financeiros...</span>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        ))}
+      </div>
+      
+      <div className="mt-6 pt-4 border-t border-purple-200">
+        <div className="text-center text-xs text-purple-600">
+          🧠 IA alimentada pelos seus dados • Análise em tempo real • Previsões personalizadas
+        </div>
+      </div>
     </div>
   );
 };

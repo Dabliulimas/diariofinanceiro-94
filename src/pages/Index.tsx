@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
@@ -8,6 +7,7 @@ import PredictiveAICoach from '../components/PredictiveAICoach';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
 import DailyMotivationalMessage from '../components/DailyMotivationalMessage';
+import DailyWisdomQuote from '../components/DailyWisdomQuote';
 import MonthNavigation from '../components/MonthNavigation';
 import FinancialTable from '../components/FinancialTable';
 import { Button } from '../components/ui/button';
@@ -57,7 +57,7 @@ const Index = () => {
 
   // Update document title
   useEffect(() => {
-    document.title = 'Diário Financeiro - Controle Inteligente com IA';
+    document.title = 'Diário Financeiro - Coach Inteligente com IA Preditiva';
   }, []);
 
   const yearlyTotals = getYearlyTotals(selectedYear);  
@@ -108,6 +108,9 @@ const Index = () => {
 
         {/* Daily Motivational Message */}
         <DailyMotivationalMessage />
+
+        {/* Daily Wisdom Quote */}
+        <DailyWisdomQuote />
 
         {/* Year Selector */}
         <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:justify-center sm:items-center sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
