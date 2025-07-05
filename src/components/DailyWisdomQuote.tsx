@@ -14,10 +14,9 @@ const INVESTMENT_QUOTES = [
   "Dinheiro é apenas uma ferramenta. Ele te levará aonde você quiser, mas não te substituirá como motorista. - Ayn Rand",
   "Não economize o que sobrar depois de gastar, mas gaste o que sobrar depois de economizar. - Warren Buffett",
   "O mercado de ações é um dispositivo para transferir dinheiro do impaciente para o paciente. - Warren Buffett",
-  // Continue with more quotes to reach 365...
   "A disciplina é a ponte entre metas e realizações. - Jim Rohn",
   "Invista em si mesmo. Seu eu futuro agradecerá. - Benjamin Franklin",
-  "O composto mais poderoso do universo é o juros compostos. - Albert Einstein",
+  "O composto mais poderoso do universo são os juros compostos. - Albert Einstein",
   "Não gaste o que você não tem para impressionar pessoas que você nem conhece. - Will Rogers",
   "A simplicidade é o último grau de sofisticação. - Leonardo da Vinci",
   "Cada real economizado é um real ganho. - Benjamin Franklin",
@@ -29,7 +28,13 @@ const INVESTMENT_QUOTES = [
   "A educação é o investimento que paga os melhores dividendos. - Benjamin Franklin",
   "Não é sobre timing do mercado, é sobre tempo no mercado. - Provérbio financeiro",
   "A paciência é amarga, mas seu fruto é doce. - Aristóteles",
-  "Economizar dinheiro é apenas o primeiro passo. Fazê-lo trabalhar para você é o próximo. - Dave Ramsey"
+  "Economizar dinheiro é apenas o primeiro passo. Fazê-lo trabalhar para você é o próximo. - Dave Ramsey",
+  // Continue com mais frases para completar 365...
+  "Pequenos gastos podem drenar grandes fortunas. - Benjamin Franklin",
+  "O dinheiro não compra felicidade, mas paga as contas. - Provérbio popular",
+  "Invista seu dinheiro em conhecimento, pois ele rende os melhores juros. - Benjamin Franklin",
+  "A persistência é o caminho do êxito. - Charles Chaplin",
+  "Quem não tem educação financeira trabalha pelo dinheiro. Quem tem faz o dinheiro trabalhar. - Robert Kiyosaki"
 ];
 
 // Generate 365 quotes by cycling through the base quotes with variations
@@ -73,25 +78,26 @@ const DailyWisdomQuote: React.FC = () => {
   
   if (isCollapsed) {
     return (
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-2 mb-4 border border-blue-200">
+      <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-3 mb-6 border-2 border-amber-200 shadow-md">
         <Button
           onClick={() => setIsCollapsed(false)}
           variant="ghost"
-          className="w-full flex items-center justify-between text-sm text-blue-700 hover:text-blue-900"
+          className="w-full flex items-center justify-center text-sm text-amber-800 hover:text-amber-900 hover:bg-amber-100"
         >
-          <span>💡 Sabedoria dos Grandes Investidores</span>
-          <ChevronDown className="w-4 h-4" />
+          <span className="mr-2">💡</span>
+          <span className="font-medium">Sabedoria dos Grandes Investidores</span>
+          <ChevronDown className="w-4 h-4 ml-2" />
         </Button>
       </div>
     );
   }
   
   return (
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-6 border border-blue-200 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💡</span>
-          <h3 className="text-sm font-semibold text-blue-800">
+    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-6 mb-8 border-2 border-amber-200 shadow-lg">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">💡</span>
+          <h3 className="text-lg font-bold text-amber-800">
             Sabedoria dos Grandes Investidores
           </h3>
         </div>
@@ -100,7 +106,8 @@ const DailyWisdomQuote: React.FC = () => {
             onClick={getRandomQuote}
             variant="ghost"
             size="sm"
-            className="text-blue-600 hover:text-blue-800"
+            className="text-amber-700 hover:text-amber-900 hover:bg-amber-100"
+            title="Nova frase aleatória"
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -108,28 +115,31 @@ const DailyWisdomQuote: React.FC = () => {
             onClick={() => setIsCollapsed(true)}
             variant="ghost"
             size="sm"
-            className="text-blue-600 hover:text-blue-800"
+            className="text-amber-700 hover:text-amber-900 hover:bg-amber-100"
+            title="Minimizar"
           >
             <ChevronUp className="w-4 h-4" />
           </Button>
         </div>
       </div>
       
-      <blockquote className="text-sm text-blue-700 italic leading-relaxed border-l-4 border-blue-300 pl-3">
-        "{displayQuote}"
-      </blockquote>
-      
-      {currentQuoteIndex > 0 && (
-        <div className="mt-2 text-xs text-blue-500">
-          Frase aleatória • Clique em ↻ para uma nova frase
+      <div className="text-center">
+        <blockquote className="text-base md:text-lg text-amber-900 italic leading-relaxed font-medium border-l-4 border-amber-400 pl-4 mx-auto max-w-4xl">
+          "{displayQuote}"
+        </blockquote>
+        
+        <div className="mt-4 pt-3 border-t border-amber-200">
+          {currentQuoteIndex > 0 ? (
+            <div className="text-sm text-amber-600 font-medium">
+              💫 Frase Aleatória • Clique em ↻ para inspirar-se novamente
+            </div>
+          ) : (
+            <div className="text-sm text-amber-600 font-medium">
+              📅 Frase do Dia {getDayOfYear()}/365 • Clique em ↻ para uma frase aleatória
+            </div>
+          )}
         </div>
-      )}
-      
-      {currentQuoteIndex === 0 && (
-        <div className="mt-2 text-xs text-blue-500">
-          Frase do dia {getDayOfYear()}/365 • Clique em ↻ para uma frase aleatória
-        </div>
-      )}
+      </div>
     </div>
   );
 };
