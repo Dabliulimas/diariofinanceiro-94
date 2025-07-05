@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
 import SummaryCard from '../components/SummaryCard';
-import EnhancedInsights from '../components/EnhancedInsights';
 import PredictiveAICoach from '../components/PredictiveAICoach';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
@@ -37,8 +36,7 @@ const Index = () => {
     emergencyReserve,
     fixedExpenses,
     updateEmergencyReserve,
-    updateFixedExpenses,
-    getRecommendedEmergencyReserve
+    updateFixedExpenses
   } = useReserveAndExpenses();
 
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
@@ -65,7 +63,6 @@ const Index = () => {
   const yearlyTotals = getYearlyTotals(selectedYear);  
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
-  const recommendedReserve = getRecommendedEmergencyReserve();
 
   // Updated to support future years with inheritance from previous years
   const currentYear = new Date().getFullYear();
@@ -175,7 +172,7 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Predictive AI Coach */}
+        {/* Predictive AI Coach (now includes all financial analysis) */}
         <PredictiveAICoach
           data={data}
           selectedYear={selectedYear}
@@ -183,16 +180,6 @@ const Index = () => {
           monthlyTotals={monthlyTotals}
           emergencyReserve={emergencyReserve}
           fixedExpenses={fixedExpenses}
-        />
-
-        {/* Enhanced Insights */}
-        <EnhancedInsights
-          monthlyTotals={monthlyTotals}
-          selectedMonth={selectedMonth}
-          selectedYear={selectedYear}
-          emergencyReserve={emergencyReserve}
-          fixedExpenses={fixedExpenses}
-          recommendedReserve={recommendedReserve}
         />
 
         {/* Yearly Summary Cards */}

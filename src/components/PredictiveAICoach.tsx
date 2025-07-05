@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Brain, TrendingUp, AlertTriangle, Target, Zap, RefreshCw } from 'lucide-react';
+import { Brain, TrendingUp, AlertTriangle, Target, Zap, RefreshCw, DollarSign, Shield, Activity, CheckCircle, TrendingDown } from 'lucide-react';
 import { formatCurrency } from '../utils/currencyUtils';
 import * as tf from '@tensorflow/tfjs';
 
@@ -131,7 +131,7 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
     return historicalData;
   }, [data, selectedYear, selectedMonth]);
 
-  // Simple prediction algorithm (without full ML training for performance)
+  // Enhanced prediction algorithm with financial analysis
   const generatePredictions = useCallback(async (): Promise<PredictionData> => {
     const historicalData = extractHistoricalData();
     
@@ -147,10 +147,17 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
       };
     }
 
-    // Calculate user patterns
+    // Calculate user patterns and financial health metrics
     const avgEntrada = historicalData.reduce((sum, d) => sum + d.entrada, 0) / historicalData.length;
     const avgSaida = historicalData.reduce((sum, d) => sum + d.saida, 0) / historicalData.length;
     const avgDiario = historicalData.reduce((sum, d) => sum + d.diario, 0) / historicalData.length;
+    
+    // Financial health calculations
+    const netFlow = monthlyTotals.totalEntradas - monthlyTotals.totalSaidas - monthlyTotals.totalDiario;
+    const recommendedReserve = fixedExpenses.totalAmount * 6;
+    const reserveStatus = emergencyReserve.amount >= recommendedReserve;
+    const savingsRate = monthlyTotals.totalEntradas > 0 ? (netFlow / monthlyTotals.totalEntradas) * 100 : 0;
+    const expenseRatio = monthlyTotals.totalEntradas > 0 ? ((monthlyTotals.totalSaidas + monthlyTotals.totalDiario) / monthlyTotals.totalEntradas) * 100 : 0;
     
     // Get current balance
     const currentDay = new Date().getDate();
@@ -184,8 +191,39 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
       }
     }
 
-    // Generate intelligent recommendations
+    // Generate comprehensive intelligent recommendations
     const recommendations: PredictionData['recommendations'] = [];
+
+    // Main financial health insight (combining the old EnhancedInsights logic)
+    if (netFlow > 0 && reserveStatus) {
+      recommendations.push({
+        type: 'success',
+        icon: '🎉',
+        title: 'Situação Financeira Excelente',
+        message: `Fluxo positivo de ${formatCurrency(netFlow)} e reserva adequada. Considere investir o excedente para multiplicar seus ganhos.`
+      });
+    } else if (netFlow > 0 && !reserveStatus) {
+      recommendations.push({
+        type: 'info',
+        icon: '🎯',
+        title: 'Fluxo Positivo - Fortaleça sua Reserva',
+        message: `Excelente fluxo de ${formatCurrency(netFlow)}! Priorize completar sua reserva de emergência (atual: ${formatCurrency(emergencyReserve.amount)} | meta: ${formatCurrency(recommendedReserve)}).`
+      });
+    } else if (netFlow < 0 && reserveStatus) {
+      recommendations.push({
+        type: 'warning',
+        icon: '⚠️',
+        title: 'Gastos Altos - Reserva Protegida',
+        message: `Déficit de ${formatCurrency(Math.abs(netFlow))}, mas sua reserva está adequada. Revise despesas para voltar ao equilíbrio.`
+      });
+    } else {
+      recommendations.push({
+        type: 'critical',
+        icon: '🚨',
+        title: 'Atenção: Situação Crítica',
+        message: `Déficit de ${formatCurrency(Math.abs(netFlow))} e reserva insuficiente. Ação urgente necessária para cortar gastos.`
+      });
+    }
 
     // Critical alerts
     if (criticalDate) {
@@ -197,34 +235,48 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
       });
     }
 
-    // Pattern-based insights
-    if (avgSaida > avgEntrada * 0.8) {
+    // Savings rate analysis
+    if (savingsRate >= 20) {
+      recommendations.push({
+        type: 'success',
+        icon: '💰',
+        title: 'Taxa de Poupança Excepcional',
+        message: `Parabéns! Você está poupando ${savingsRate.toFixed(1)}% da receita. Continue assim e considere diversificar investimentos.`
+      });
+    } else if (savingsRate >= 10) {
+      recommendations.push({
+        type: 'info',
+        icon: '📈',
+        title: 'Boa Taxa de Poupança',
+        message: `Taxa de poupança de ${savingsRate.toFixed(1)}% é saudável. Tente aumentar gradualmente para 20% para acelerar seus objetivos.`
+      });
+    } else if (savingsRate > 0) {
       recommendations.push({
         type: 'warning',
         icon: '⚡',
-        title: 'Padrão de Alto Gasto Detectado',
-        message: `Seus gastos representam ${((avgSaida / avgEntrada) * 100).toFixed(1)}% da receita. Monitore de perto para evitar endividamento.`
+        title: 'Taxa de Poupança Baixa',
+        message: `Taxa de poupança de ${savingsRate.toFixed(1)}% está abaixo do ideal. Meta: pelo menos 10% da receita.`
       });
     }
 
-    // Positive reinforcement
-    if (monthlyTotals.saldoFinal > 0 && avgEntrada > avgSaida + avgDiario) {
-      const savingsRate = ((monthlyTotals.saldoFinal / monthlyTotals.totalEntradas) * 100);
+    // Expense ratio analysis
+    if (expenseRatio > 90) {
       recommendations.push({
-        type: 'success',
-        icon: '🎉',
-        title: 'Padrão Financeiro Saudável',
-        message: `Excelente! Você está poupando ${savingsRate.toFixed(1)}% da receita. Continue assim!`
+        type: 'warning',
+        icon: '📊',
+        title: 'Gastos Muito Altos',
+        message: `Seus gastos representam ${expenseRatio.toFixed(1)}% da receita. Risco alto de endividamento - revise despesas não essenciais.`
       });
     }
 
     // Emergency reserve analysis
     if (emergencyReserve.amount < fixedExpenses.totalAmount * 3) {
+      const currentMonths = emergencyReserve.amount / fixedExpenses.totalAmount;
       recommendations.push({
         type: 'warning',
         icon: '🛡️',
-        title: 'Reserva de Emergência Baixa',
-        message: `Sua reserva cobre apenas ${(emergencyReserve.amount / fixedExpenses.totalAmount).toFixed(1)} meses de gastos fixos. Meta recomendada: 6 meses.`
+        title: 'Reserva de Emergência Insuficiente',
+        message: `Sua reserva cobre apenas ${currentMonths.toFixed(1)} meses de gastos fixos. Meta recomendada: 6 meses (${formatCurrency(recommendedReserve)}).`
       });
     }
 
@@ -240,8 +292,15 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
         recommendations.push({
           type: 'warning',
           icon: '📈',
-          title: 'Gastos em Crescimento',
+          title: 'Tendência de Gastos Crescente',
           message: `Seus gastos aumentaram ${(((recentAvgSpending / olderAvgSpending) - 1) * 100).toFixed(1)}% recentemente. Avalie se isso é sustentável.`
+        });
+      } else if (recentAvgSpending < olderAvgSpending * 0.8) {
+        recommendations.push({
+          type: 'success',
+          icon: '📉',
+          title: 'Redução Inteligente de Gastos',
+          message: `Excelente! Você reduziu gastos em ${(((olderAvgSpending / recentAvgSpending) - 1) * 100).toFixed(1)}% recentemente. Continue assim!`
         });
       }
     }
@@ -287,6 +346,11 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
     );
   }
 
+  // Calculate financial metrics for quick stats
+  const netFlow = monthlyTotals.totalEntradas - monthlyTotals.totalSaidas - monthlyTotals.totalDiario;
+  const savingsRate = monthlyTotals.totalEntradas > 0 ? (netFlow / monthlyTotals.totalEntradas) * 100 : 0;
+  const expenseRatio = monthlyTotals.totalEntradas > 0 ? ((monthlyTotals.totalSaidas + monthlyTotals.totalDiario) / monthlyTotals.totalEntradas) * 100 : 0;
+
   return (
     <div className="mb-6 space-y-4">
       {/* Header */}
@@ -297,7 +361,7 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
               <Brain className="w-7 h-7" />
               <div>
                 <h3 className="text-xl font-bold">IA Coach Preditiva</h3>
-                <p className="text-purple-100 text-sm">Análise inteligente do seu padrão financeiro</p>
+                <p className="text-purple-100 text-sm">Análise inteligente e previsões financeiras personalizadas</p>
               </div>
             </div>
             <Button
@@ -312,6 +376,51 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
           </CardTitle>
         </CardHeader>
       </Card>
+
+      {/* Quick Financial Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-green-600 font-medium">Fluxo Mensal</p>
+                <p className={`text-lg font-bold ${netFlow >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {formatCurrency(netFlow)}
+                </p>
+              </div>
+              <DollarSign className="w-8 h-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-purple-600 font-medium">Taxa de Poupança</p>
+                <p className="text-lg font-bold text-purple-700">
+                  {savingsRate >= 0 ? `+${savingsRate.toFixed(1)}%` : `${savingsRate.toFixed(1)}%`}
+                </p>
+              </div>
+              <Activity className="w-8 h-8 text-purple-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-blue-600 font-medium">Reserva</p>
+                <p className="text-lg font-bold text-blue-700">
+                  {formatCurrency(emergencyReserve.amount)}
+                </p>
+              </div>
+              <Shield className="w-8 h-8 text-blue-500" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Predictions Display */}
       {predictions && (
@@ -363,7 +472,7 @@ const PredictiveAICoach: React.FC<PredictiveAICoachProps> = ({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Target className="w-5 h-5 text-purple-600" />
-                Recomendações Inteligentes
+                Análises e Recomendações Inteligentes
               </CardTitle>
             </CardHeader>
             <CardContent>
