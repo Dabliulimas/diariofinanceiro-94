@@ -27,12 +27,19 @@ const QuickEntry = () => {
   const [description, setDescription] = useState('');
   const [editingTransaction, setEditingTransaction] = useState<string | null>(null);
 
-  // Initialize date from URL params if provided
+  // Initialize date from URL params if provided - FIXED date parsing
   useEffect(() => {
     const dateParam = searchParams.get('date');
     if (dateParam) {
-      setSelectedDate(new Date(dateParam));
+      // Parse date correctly to avoid timezone issues
+      const [year, month, day] = dateParam.split('-').map(Number);
+      const correctDate = new Date(year, month - 1, day); // month - 1 because Date uses 0-based months
+      console.log('📅 Setting date from URL param:', dateParam, '→', correctDate);
+      setSelectedDate(correctDate);
     }
+
+    // Update document title
+    document.title = 'Lançamento Rápido - Diário Financeiro';
   }, [searchParams]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -47,11 +54,13 @@ const QuickEntry = () => {
       return;
     }
 
+    // FIXED: Use correct date formatting to avoid timezone issues
     const dateString = format(selectedDate, 'yyyy-MM-dd');
     const numericAmount = parseFloat(amount.replace(',', '.'));
 
-    console.log('🚀 Submitting transaction:', { 
+    console.log('🚀 Submitting transaction with CORRECT date:', { 
       date: dateString, 
+      selectedDate: selectedDate,
       type: transactionType, 
       amount: numericAmount, 
       description 
@@ -90,9 +99,16 @@ const QuickEntry = () => {
   };
 
   const handleEdit = (transaction: any) => {
-    console.log('✏️ Editing transaction:', transaction);
+    console.log('✏️ Editing transaction with CORRECT date handling:', transaction);
+    
     setEditingTransaction(transaction.id);
-    setSelectedDate(new Date(transaction.date));
+    
+    // FIXED: Parse transaction date correctly
+    const [year, month, day] = transaction.date.split('-').map(Number);
+    const correctDate = new Date(year, month - 1, day); // month - 1 for 0-based months
+    console.log('📅 Edit: Setting date from transaction:', transaction.date, '→', correctDate);
+    
+    setSelectedDate(correctDate);
     setTransactionType(transaction.type);
     setAmount(transaction.amount.toString().replace('.', ','));
     setDescription(transaction.description);
@@ -115,8 +131,10 @@ const QuickEntry = () => {
     setDescription('');
   };
 
-  const todayTransactions = getTransactionsByDate(format(selectedDate, 'yyyy-MM-dd'));
-  console.log('📋 Transactions for', format(selectedDate, 'yyyy-MM-dd'), ':', todayTransactions.length);
+  // FIXED: Get transactions using correct date formatting
+  const dateString = format(selectedDate, 'yyyy-MM-dd');
+  const todayTransactions = getTransactionsByDate(dateString);
+  console.log('📋 Transactions for', dateString, ':', todayTransactions.length, 'transactions found');
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
@@ -134,7 +152,7 @@ const QuickEntry = () => {
             </Button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Lançamento Rápido</h1>
-              <p className="text-gray-600">Adição rápida com sincronização automática</p>
+              <p className="text-gray-600">Diário Financeiro - Sincronização Automática</p>
             </div>
           </div>
         </div>

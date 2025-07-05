@@ -5,6 +5,7 @@ import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
 import SummaryCard from '../components/SummaryCard';
 import EnhancedInsights from '../components/EnhancedInsights';
+import PredictiveAICoach from '../components/PredictiveAICoach';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
 import DailyMotivationalMessage from '../components/DailyMotivationalMessage';
@@ -50,11 +51,16 @@ const Index = () => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
     
-    // Recalculate all balances to ensure consistency
-    setTimeout(() => {
+    // Recalculate all balances to ensure consistency with immediate response
+    requestAnimationFrame(() => {
       recalculateBalances();
-    }, 100);
+    });
   }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances]);
+
+  // Update document title
+  useEffect(() => {
+    document.title = 'Diário Financeiro - Controle Inteligente com IA';
+  }, []);
 
   const yearlyTotals = getYearlyTotals(selectedYear);  
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
@@ -85,11 +91,11 @@ const Index = () => {
       return newValues;
     });
     
-    // Recalculate balances from this day forward
-    console.log('🔄 Recalculating balances after manual input');
-    setTimeout(() => {
+    // Immediate balance recalculation with requestAnimationFrame for smooth UI
+    console.log('🔄 Recalculating balances after manual input (immediate)');
+    requestAnimationFrame(() => {
       recalculateBalances(selectedYear, selectedMonth, day);
-    }, 100);
+    });
   };
 
   return (
@@ -98,9 +104,9 @@ const Index = () => {
         {/* Header */}
         <div className="text-center mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
-            Sistema Bancário Financeiro
+            Diário Financeiro
           </h1>
-          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Controle Inteligente com IA</p>
+          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Coach Inteligente com IA Preditiva</p>
         </div>
 
         {/* Daily Motivational Message */}
@@ -168,6 +174,16 @@ const Index = () => {
             </span>
           </Button>
         </div>
+
+        {/* Predictive AI Coach */}
+        <PredictiveAICoach
+          data={data}
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+          monthlyTotals={monthlyTotals}
+          emergencyReserve={emergencyReserve}
+          fixedExpenses={fixedExpenses}
+        />
 
         {/* Enhanced Insights */}
         <EnhancedInsights
