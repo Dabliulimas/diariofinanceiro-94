@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
@@ -49,7 +50,7 @@ const Index = () => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
     
-    // Recalculate all balances to ensure consistency with immediate response
+    // Recalculate all balances with recursive year propagation
     requestAnimationFrame(() => {
       recalculateBalances();
     });
@@ -88,8 +89,8 @@ const Index = () => {
       return newValues;
     });
     
-    // Immediate balance recalculation with requestAnimationFrame for smooth UI
-    console.log('🔄 Recalculating balances after manual input (immediate)');
+    // Immediate balance recalculation with recursive year propagation
+    console.log('🔄 Recalculating balances after manual input with recursive year propagation');
     requestAnimationFrame(() => {
       recalculateBalances(selectedYear, selectedMonth, day);
     });

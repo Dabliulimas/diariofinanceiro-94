@@ -7,9 +7,9 @@ export const useSyncedFinancialData = () => {
   const financialData = useFinancialData();
   const transactions = useTransactions();
 
-  // MAIN SYNC FUNCTION with immediate recalculation and automatic propagation
+  // MAIN SYNC FUNCTION with immediate recalculation and recursive year propagation
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction and syncing with automatic propagation:', transaction);
+    console.log('🔄 Adding transaction and syncing with recursive year propagation:', transaction);
     
     // Add to transactions
     const newTransaction = transactions.addTransaction(transaction);
@@ -26,16 +26,16 @@ export const useSyncedFinancialData = () => {
     // Add to financial data
     financialData.addToDay(year, actualMonth, day, transaction.type, transaction.amount);
     
-    // IMMEDIATE recalculation with automatic propagation
+    // IMMEDIATE recalculation with recursive year propagation
     requestAnimationFrame(() => {
       financialData.recalculateBalances(year, actualMonth, day);
-      console.log('✅ Transaction added and synced with automatic propagation');
+      console.log('✅ Transaction added and synced with recursive year propagation');
     });
   }, [transactions, financialData]);
 
-  // UPDATE with automatic propagation
+  // UPDATE with recursive year propagation
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('🔄 Updating transaction with automatic propagation:', id, updates);
+    console.log('🔄 Updating transaction with recursive year propagation:', id, updates);
     
     const originalTransaction = transactions.transactions.find(t => t.id === id);
     if (!originalTransaction) {
@@ -64,20 +64,20 @@ export const useSyncedFinancialData = () => {
     financialData.initializeMonth(newYear, newActualMonth);
     financialData.addToDay(newYear, newActualMonth, newDay, newType, newAmount);
     
-    // Recalculate from earliest affected date with automatic propagation
+    // Recalculate from earliest affected date with recursive year propagation
     const earliestYear = Math.min(oldYear, newYear);
     const earliestMonth = oldYear === newYear ? Math.min(oldActualMonth, newActualMonth) : (oldYear < newYear ? oldActualMonth : newActualMonth);
     const earliestDay = oldYear === newYear && oldActualMonth === newActualMonth ? Math.min(oldDay, newDay) : oldDay;
     
     requestAnimationFrame(() => {
       financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
-      console.log('✅ Transaction updated with automatic propagation');
+      console.log('✅ Transaction updated with recursive year propagation');
     });
   }, [transactions, financialData]);
 
-  // DELETE with automatic propagation
+  // DELETE with recursive year propagation
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🔄 Deleting transaction with automatic propagation:', id);
+    console.log('🔄 Deleting transaction with recursive year propagation:', id);
     
     const transactionToDelete = transactions.transactions.find(t => t.id === id);
     if (!transactionToDelete) {
@@ -95,13 +95,13 @@ export const useSyncedFinancialData = () => {
     
     requestAnimationFrame(() => {
       financialData.recalculateBalances(year, actualMonth, day);
-      console.log('✅ Transaction deleted with automatic propagation');
+      console.log('✅ Transaction deleted with recursive year propagation');
     });
   }, [transactions, financialData]);
 
-  // Force full recalculation with automatic propagation
+  // Force full recalculation with recursive year propagation
   const forceRecalculation = useCallback((): void => {
-    console.log('🔄 Forcing full recalculation with automatic propagation');
+    console.log('🔄 Forcing full recalculation with recursive year propagation');
     requestAnimationFrame(() => {
       financialData.recalculateBalances();
     });

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
@@ -42,11 +41,16 @@ export const useFinancialData = () => {
 
   // Save data to localStorage with immediate propagation
   useEffect(() => {
+    if (Object.keys(data).length === 0) return; // Don't save empty data
+    
     console.log('💾 Saving financial data with automatic propagation');
     const propagatedData = propagateBalancesBetweenYears(data);
+    
+    // Only update state if there are actual changes
     if (JSON.stringify(propagatedData) !== JSON.stringify(data)) {
       setData(propagatedData);
     }
+    
     localStorage.setItem('financialData', JSON.stringify(propagatedData));
   }, [data, propagateBalancesBetweenYears]);
 
@@ -136,12 +140,13 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // Função principal de recálculo com propagação automática
+  // Função principal de recálculo com propagação automática recursiva
   const recalculateBalances = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
-    console.log(`🧮 Starting balance recalculation with automatic propagation`);
+    console.log(`🧮 Starting balance recalculation with recursive year propagation`);
     
     setData(prevData => {
-      return recalculateWithPropagation(prevData, startYear, startMonth, startDay);
+      const recalculatedData = recalculateWithPropagation(prevData, startYear, startMonth, startDay);
+      return recalculatedData;
     });
   }, [recalculateWithPropagation]);
 
