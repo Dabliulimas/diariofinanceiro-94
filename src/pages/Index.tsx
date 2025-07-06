@@ -43,19 +43,15 @@ const Index = () => {
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
 
-  // Initialize current month when component mounts or when month/year changes
   useEffect(() => {
-    console.log('🏠 Initializing month:', selectedYear, selectedMonth);
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
     
-    // Trigger COMPLETE recalculation
     requestAnimationFrame(() => {
       recalculateBalances();
     });
   }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances]);
 
-  // Update document title
   useEffect(() => {
     document.title = 'Diário Financeiro - Coach Inteligente com IA Preditiva';
   }, []);
@@ -64,12 +60,9 @@ const Index = () => {
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
 
-  // Updated to support future years with inheritance from previous years
   const currentYear = new Date().getFullYear();
   const startYear = Math.max(2025, currentYear);
   const years = Array.from({ length: 15 }, (_, i) => startYear + i);
-
-  console.log('📊 Index: Current totals - Yearly:', yearlyTotals, 'Monthly:', monthlyTotals);
 
   const getInputKey = (day: number, field: string) => `${selectedYear}-${selectedMonth}-${day}-${field}`;
 
@@ -78,22 +71,15 @@ const Index = () => {
     setInputValues(prev => ({ ...prev, [key]: value }));
   };
 
-  // FUNÇÃO CRÍTICA: handleInputBlur com recálculo AUTOMÁTICO e COMPLETO
   const handleInputBlur = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
-    console.log('📝 Input blur with AUTOMATIC COMPLETE recalculation:', { day, field, value });
-    
-    // Atualiza o dado (que já dispara recálculo automático via updateDayData)
     updateDayData(selectedYear, selectedMonth, day, field, value);
     
-    // Remove do state local
     const key = getInputKey(day, field);
     setInputValues(prev => {
       const newValues = { ...prev };
       delete newValues[key];
       return newValues;
     });
-    
-    console.log('✅ Input processed with AUTOMATIC COMPLETE recalculation');
   };
 
   return (
@@ -107,7 +93,6 @@ const Index = () => {
           <p className="text-sm sm:text-lg md:text-xl text-gray-600">Coach Inteligente com IA Preditiva</p>
         </div>
 
-        {/* Daily Wisdom Quote (only this one remains) */}
         <DailyWisdomQuote />
 
         {/* Year Selector */}
@@ -115,16 +100,11 @@ const Index = () => {
           <div className="relative">
             <select
               value={selectedYear}
-              onChange={(e) => {
-                console.log('📅 Year changed to:', e.target.value);
-                setSelectedYear(Number(e.target.value));
-              }}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="w-full sm:w-auto bg-white border-2 border-green-500 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm sm:text-base md:text-lg font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent appearance-none"
             >
               {years.map(year => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
+                <option key={year} value={year}>{year}</option>
               ))}
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
@@ -173,7 +153,6 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Predictive AI Coach (now includes all financial analysis) */}
         <PredictiveAICoach
           data={data}
           selectedYear={selectedYear}
@@ -211,7 +190,6 @@ const Index = () => {
           />
         </div>
 
-        {/* Month Navigation */}
         <MonthNavigation
           selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth}
@@ -245,7 +223,6 @@ const Index = () => {
           />
         </div>
 
-        {/* Monthly Data Table */}
         <FinancialTable
           selectedYear={selectedYear}
           selectedMonth={selectedMonth}
@@ -257,7 +234,6 @@ const Index = () => {
           getTransactionsByDate={getTransactionsByDate}
         />
 
-        {/* Modals */}
         <EmergencyReserveModal
           isOpen={showReserveModal}
           onClose={() => setShowReserveModal(false)}
