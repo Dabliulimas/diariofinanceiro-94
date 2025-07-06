@@ -42,6 +42,15 @@ export class InsightAnalyzer {
     return parseFloat(value.replace(/[^\d,-]/g, '').replace(',', '.')) || 0;
   }
 
+  private getCurrentDay(): number {
+    return new Date().getDate();
+  }
+
+  private isCurrentMonth(year: number, month: number): boolean {
+    const now = new Date();
+    return year === now.getFullYear() && month === now.getMonth();
+  }
+
   analyzeNegativeBalance(
     data: FinancialData,
     selectedYear: number,
@@ -51,42 +60,46 @@ export class InsightAnalyzer {
     if (!monthData) return [];
     
     const insights: Insight[] = [];
+    let negativeBalance = null;
     let firstNegativeDay = null;
-    let worstBalance = 0;
-    let worstDay = null;
-    let negativeStreak = 0;
     
-    for (let day = 1; day <= 31; day++) {
+    // Verifica apenas os dias que têm dados reais
+    const daysWithData = Object.keys(monthData)
+      .map(Number)
+      .filter(day => {
+        const dayData = monthData[day];
+        return dayData && (
+          this.parseCurrency(dayData.entrada) > 0 || 
+          this.parseCurrency(dayData.saida) > 0 || 
+          this.parseCurrency(dayData.diario) > 0
+        );
+      })
+      .sort((a, b) => a - b);
+    
+    // Só analisa se há pelo menos um dia com dados
+    if (daysWithData.length === 0) return [];
+    
+    for (const day of daysWithData) {
       const dayData = monthData[day];
       if (dayData && dayData.balance < 0) {
-        if (!firstNegativeDay) firstNegativeDay = day;
-        negativeStreak++;
-        
-        if (dayData.balance < worstBalance) {
-          worstBalance = dayData.balance;
-          worstDay = day;
+        if (!firstNegativeDay) {
+          firstNegativeDay = day;
+          negativeBalance = dayData.balance;
+        }
+        if (dayData.balance < negativeBalance) {
+          negativeBalance = dayData.balance;
         }
       }
     }
     
-    if (firstNegativeDay) {
+    if (firstNegativeDay && negativeBalance !== null) {
       insights.push({
         type: 'critical',
         icon: '🚨',
         title: 'Saldo Negativo Detectado',
-        message: `Saldo negativo a partir do dia ${firstNegativeDay}. Pior momento: dia ${worstDay} com ${this.formatCurrency(worstBalance)}.`,
+        message: `Saldo negativo a partir do dia ${firstNegativeDay} (${this.formatCurrency(negativeBalance)}). Revise seus gastos.`,
         priority: 10
       });
-      
-      if (negativeStreak > 7) {
-        insights.push({
-          type: 'critical',
-          icon: '⚠️',
-          title: 'Situação Prolongada',
-          message: `${negativeStreak} dias consecutivos com saldo negativo. Reorganize suas finanças urgentemente.`,
-          priority: 9
-        });
-      }
     }
     
     return insights;
@@ -102,44 +115,43 @@ export class InsightAnalyzer {
     if (!monthData) return [];
     
     const insights: Insight[] = [];
-    const dailyExpenses = [];
-    const dailyIncomes = [];
+    const isCurrentMonthActive = this.isCurrentMonth(selectedYear, selectedMonth);
     
-    for (let day = Math.max(1, currentDay - 6); day <= currentDay; day++) {
-      const dayData = monthData[day];
-      if (dayData) {
-        const dailySpent = this.parseCurrency(dayData.saida) + this.parseCurrency(dayData.diario);
-        const dailyIncome = this.parseCurrency(dayData.entrada);
-        dailyExpenses.push({ day, amount: dailySpent });
-        dailyIncomes.push({ day, amount: dailyIncome });
+    // Coleta dados reais dos últimos 7 dias com transações
+    const recentExpenses = [];
+    const checkDays = Math.min(currentDay, 7);
+    
+    for (let i = 0; i < checkDays; i++) {
+      const day = currentDay - i;
+      if (day >= 1) {
+        const dayData = monthData[day];
+        if (dayData) {
+          const saida = this.parseCurrency(dayData.saida);
+          const diario = this.parseCurrency(dayData.diario);
+          const totalGasto = saida + diario;
+          
+          if (totalGasto > 0) {
+            recentExpenses.push({ day, amount: totalGasto });
+          }
+        }
       }
     }
     
-    if (dailyExpenses.length >= 3) {
-      const isIncreasingTrend = dailyExpenses.every((expense, index) => 
-        index === 0 || expense.amount >= dailyExpenses[index - 1].amount
-      );
+    // Só analisa se há pelo menos 2 dias com gastos reais
+    if (recentExpenses.length >= 2 && isCurrentMonthActive) {
+      const sortedExpenses = recentExpenses.sort((a, b) => a.day - b.day);
+      const avgExpense = sortedExpenses.reduce((sum, exp) => sum + exp.amount, 0) / sortedExpenses.length;
+      const lastExpense = sortedExpenses[sortedExpenses.length - 1].amount;
       
-      if (isIncreasingTrend && dailyExpenses[dailyExpenses.length - 1].amount > 200) {
+      if (lastExpense > avgExpense * 1.5 && lastExpense > 50) {
         insights.push({
           type: 'alert',
-          icon: '📈',
-          title: 'Gastos Crescentes',
-          message: 'Seus gastos aumentaram diariamente. Revise o orçamento antes que saia do controle.',
-          priority: 8
+          icon: '📊',
+          title: 'Gasto Acima da Média',
+          message: `Gasto de ${this.formatCurrency(lastExpense)} no dia ${sortedExpenses[sortedExpenses.length - 1].day} está ${((lastExpense/avgExpense - 1) * 100).toFixed(0)}% acima da sua média.`,
+          priority: 7
         });
       }
-    }
-    
-    const totalRecentIncome = dailyIncomes.reduce((sum, income) => sum + income.amount, 0);
-    if (currentDay > 10 && totalRecentIncome === 0) {
-      insights.push({
-        type: 'warning',
-        icon: '💰',
-        title: 'Receita Não Registrada',
-        message: 'Você não registrou receitas recentemente. Lembre-se de registrar salários e outras fontes.',
-        priority: 7
-      });
     }
     
     return insights;
@@ -153,53 +165,54 @@ export class InsightAnalyzer {
     currentDay: number,
     isCurrentMonth: boolean
   ): Insight[] {
-    if (!isCurrentMonth) return [];
+    if (!isCurrentMonth || currentDay < 5) return []; // Precisa de pelo menos 5 dias de dados
     
     const insights: Insight[] = [];
     const monthData = data[selectedYear]?.[selectedMonth];
     
-    if (monthData) {
-      const recentDays = [];
-      for (let day = Math.max(1, currentDay - 7); day <= currentDay; day++) {
-        const dayData = monthData[day];
-        if (dayData) {
-          const dailySpent = this.parseCurrency(dayData.saida) + this.parseCurrency(dayData.diario);
-          const dailyIncome = this.parseCurrency(dayData.entrada);
-          recentDays.push({ spent: dailySpent, income: dailyIncome });
+    if (!monthData) return [];
+    
+    // Coleta gastos reais dos últimos dias
+    const recentDailyExpenses = [];
+    let daysAnalyzed = 0;
+    
+    for (let day = currentDay; day >= 1 && daysAnalyzed < 7; day--) {
+      const dayData = monthData[day];
+      if (dayData) {
+        const saida = this.parseCurrency(dayData.saida);
+        const diario = this.parseCurrency(dayData.diario);
+        const totalGasto = saida + diario;
+        
+        if (totalGasto > 0) {
+          recentDailyExpenses.push(totalGasto);
+          daysAnalyzed++;
         }
       }
+    }
+    
+    // Só faz projeção se tiver pelo menos 3 dias com gastos reais
+    if (recentDailyExpenses.length >= 3) {
+      const avgDailyExpense = recentDailyExpenses.reduce((sum, exp) => sum + exp, 0) / recentDailyExpenses.length;
+      const daysRemaining = new Date(selectedYear, selectedMonth + 1, 0).getDate() - currentDay;
       
-      if (recentDays.length >= 3) {
-        const avgDailySpent = recentDays.reduce((sum, day) => sum + day.spent, 0) / recentDays.length;
-        const avgDailyIncome = recentDays.reduce((sum, day) => sum + day.income, 0) / recentDays.length;
+      if (daysRemaining > 0) {
+        const projectedAdditionalExpenses = avgDailyExpense * daysRemaining;
+        const projectedFinalBalance = monthlyTotals.saldoFinal - projectedAdditionalExpenses;
         
-        const daysRemaining = new Date(selectedYear, selectedMonth + 1, 0).getDate() - currentDay;
-        const projectedExpenses = avgDailySpent * daysRemaining;
-        const projectedIncome = avgDailyIncome * daysRemaining;
-        const projectedBalance = monthlyTotals.saldoFinal + projectedIncome - projectedExpenses;
-        
-        if (projectedBalance < -500) {
-          insights.push({
-            type: 'critical',
-            icon: '🎯',
-            title: 'Alto Risco de Endividamento',
-            message: `Projeção: ${this.formatCurrency(projectedBalance)} no fim do mês. Corte gastos agora!`,
-            priority: 9
-          });
-        } else if (projectedBalance < 0) {
+        if (projectedFinalBalance < -200) {
           insights.push({
             type: 'alert',
-            icon: '⚠️',
-            title: 'Saldo Negativo Projetado',
-            message: `Projeção: ${this.formatCurrency(projectedBalance)}. Ajuste gastos nos próximos ${daysRemaining} dias.`,
+            icon: '🎯',
+            title: 'Projeção de Saldo Negativo',
+            message: `Baseado nos últimos ${recentDailyExpenses.length} dias de gastos (média: ${this.formatCurrency(avgDailyExpense)}/dia), o saldo pode ficar em ${this.formatCurrency(projectedFinalBalance)}.`,
             priority: 8
           });
-        } else if (projectedBalance > 1000) {
+        } else if (projectedFinalBalance > 500) {
           insights.push({
             type: 'success',
-            icon: '🎯',
-            title: 'Excelente Gestão',
-            message: `Projeção: ${this.formatCurrency(projectedBalance)}. Considere investir o excedente.`,
+            icon: '💰',
+            title: 'Gestão Eficiente',
+            message: `Mantendo o ritmo atual de gastos, você pode terminar o mês com ${this.formatCurrency(projectedFinalBalance)} de saldo positivo.`,
             priority: 3
           });
         }
@@ -219,62 +232,67 @@ export class InsightAnalyzer {
     const totalIncome = monthlyTotals.totalEntradas;
     const totalExpenses = monthlyTotals.totalSaidas + monthlyTotals.totalDiario;
     
+    // Só analisa se há dados reais de receita ou despesa
+    if (totalIncome === 0 && totalExpenses === 0) {
+      return [{
+        type: 'coaching',
+        icon: '📝',
+        title: 'Comece a Registrar',
+        message: 'Registre suas receitas e despesas para receber análises personalizadas.',
+        priority: 5
+      }];
+    }
+    
     if (totalIncome > 0) {
       const expenseRatio = (totalExpenses / totalIncome) * 100;
       
-      if (expenseRatio > 95) {
+      if (expenseRatio > 90) {
         insights.push({
           type: 'critical',
-          icon: '🎯',
-          title: 'Gasto Crítico',
-          message: `${expenseRatio.toFixed(1)}% da renda gasta! Meta: manter abaixo de 80%. Corte gastos urgentemente.`,
-          priority: 8
+          icon: '⚠️',
+          title: 'Gastos Críticos',
+          message: `Você gastou ${expenseRatio.toFixed(0)}% da sua renda. Recomendamos manter abaixo de 80%.`,
+          priority: 9
         });
-      } else if (expenseRatio > 85) {
+      } else if (expenseRatio > 75) {
         insights.push({
-          type: 'alert',
+          type: 'warning',
           icon: '📊',
-          title: 'Orçamento no Limite',
-          message: `${expenseRatio.toFixed(1)}% da renda gasta. Revise despesas não essenciais.`,
-          priority: 7
+          title: 'Gastos Elevados',
+          message: `${expenseRatio.toFixed(0)}% da renda foi gasta. Considere revisar despesas não essenciais.`,
+          priority: 6
         });
-      } else if (expenseRatio < 50) {
+      } else if (expenseRatio < 60) {
         insights.push({
           type: 'success',
-          icon: '💪',
-          title: 'Disciplina Exemplar',
-          message: `Apenas ${expenseRatio.toFixed(1)}% gasto. Você está no caminho da independência financeira!`,
+          icon: '🎯',
+          title: 'Controle Exemplar',
+          message: `Excelente! Apenas ${expenseRatio.toFixed(0)}% da renda gasta. Continue assim.`,
           priority: 2
         });
       }
     }
     
-    if (fixedExpenses.totalAmount > 0) {
+    // Análise de reserva de emergência (mais realista)
+    if (emergencyReserve.amount === 0 && totalIncome > 0) {
+      const suggestedStart = Math.min(totalIncome * 0.1, 500);
+      insights.push({
+        type: 'suggestion',
+        icon: '🛡️',
+        title: 'Crie uma Reserva',
+        message: `Comece separando ${this.formatCurrency(suggestedStart)} mensalmente para emergências.`,
+        priority: 4
+      });
+    } else if (emergencyReserve.amount > 0 && fixedExpenses.totalAmount > 0) {
       const monthsCovered = emergencyReserve.amount / fixedExpenses.totalAmount;
       
-      if (emergencyReserve.amount === 0) {
+      if (monthsCovered < 3) {
         insights.push({
-          type: 'critical',
-          icon: '🛡️',
-          title: 'Sem Proteção Financeira',
-          message: 'Crie uma reserva de emergência. Comece com R$ 500 e aumente gradualmente.',
-          priority: 6
-        });
-      } else if (monthsCovered < 3) {
-        insights.push({
-          type: 'warning',
-          icon: '⚡',
-          title: 'Reserva Insuficiente',
-          message: `Reserva cobre ${monthsCovered.toFixed(1)} mês(es). Meta: 6 meses. Separe 10% da renda.`,
-          priority: 5
-        });
-      } else if (monthsCovered >= 6) {
-        insights.push({
-          type: 'success',
-          icon: '🏆',
-          title: 'Reserva Sólida',
-          message: `Reserva cobre ${monthsCovered.toFixed(1)} meses. Foque em investimentos de longo prazo.`,
-          priority: 1
+          type: 'coaching',
+          icon: '📈',
+          title: 'Amplie sua Rezerva',
+          message: `Sua reserva cobre ${monthsCovered.toFixed(1)} mês(es). Meta ideal: 6 meses de gastos fixos.`,
+          priority: 4
         });
       }
     }
