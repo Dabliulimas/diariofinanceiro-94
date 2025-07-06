@@ -7,9 +7,9 @@ export const useSyncedFinancialData = () => {
   const financialData = useFinancialData();
   const transactions = useTransactions();
 
-  // MAIN SYNC FUNCTION with immediate recalculation and recursive year propagation
+  // MAIN SYNC FUNCTION with IMMEDIATE and COMPLETE recalculation
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction and syncing with recursive year propagation:', transaction);
+    console.log('🔄 Adding transaction with IMMEDIATE COMPLETE sync:', transaction);
     
     // Add to transactions
     const newTransaction = transactions.addTransaction(transaction);
@@ -26,16 +26,16 @@ export const useSyncedFinancialData = () => {
     // Add to financial data
     financialData.addToDay(year, actualMonth, day, transaction.type, transaction.amount);
     
-    // IMMEDIATE recalculation with recursive year propagation
+    // IMMEDIATE and COMPLETE recalculation (the updateDayData already triggers this)
     requestAnimationFrame(() => {
       financialData.recalculateBalances(year, actualMonth, day);
-      console.log('✅ Transaction added and synced with recursive year propagation');
+      console.log('✅ Transaction added with COMPLETE sync and propagation');
     });
   }, [transactions, financialData]);
 
-  // UPDATE with recursive year propagation
+  // UPDATE with COMPLETE recalculation
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('🔄 Updating transaction with recursive year propagation:', id, updates);
+    console.log('🔄 Updating transaction with COMPLETE recalculation:', id, updates);
     
     const originalTransaction = transactions.transactions.find(t => t.id === id);
     if (!originalTransaction) {
@@ -64,20 +64,20 @@ export const useSyncedFinancialData = () => {
     financialData.initializeMonth(newYear, newActualMonth);
     financialData.addToDay(newYear, newActualMonth, newDay, newType, newAmount);
     
-    // Recalculate from earliest affected date with recursive year propagation
+    // Recalculate from earliest affected date with COMPLETE propagation
     const earliestYear = Math.min(oldYear, newYear);
     const earliestMonth = oldYear === newYear ? Math.min(oldActualMonth, newActualMonth) : (oldYear < newYear ? oldActualMonth : newActualMonth);
     const earliestDay = oldYear === newYear && oldActualMonth === newActualMonth ? Math.min(oldDay, newDay) : oldDay;
     
     requestAnimationFrame(() => {
       financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
-      console.log('✅ Transaction updated with recursive year propagation');
+      console.log('✅ Transaction updated with COMPLETE recalculation and propagation');
     });
   }, [transactions, financialData]);
 
-  // DELETE with recursive year propagation
+  // DELETE with COMPLETE recalculation
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🔄 Deleting transaction with recursive year propagation:', id);
+    console.log('🔄 Deleting transaction with COMPLETE recalculation:', id);
     
     const transactionToDelete = transactions.transactions.find(t => t.id === id);
     if (!transactionToDelete) {
@@ -95,13 +95,13 @@ export const useSyncedFinancialData = () => {
     
     requestAnimationFrame(() => {
       financialData.recalculateBalances(year, actualMonth, day);
-      console.log('✅ Transaction deleted with recursive year propagation');
+      console.log('✅ Transaction deleted with COMPLETE recalculation and propagation');
     });
   }, [transactions, financialData]);
 
-  // Force full recalculation with recursive year propagation
-  const forceRecalculation = useCallback((): void => {
-    console.log('🔄 Forcing full recalculation with recursive year propagation');
+  // Force COMPLETE recalculation
+  const forceCompleteRecalculation = useCallback((): void => {
+    console.log('🔄 Forcing COMPLETE recalculation with full propagation');
     requestAnimationFrame(() => {
       financialData.recalculateBalances();
     });
@@ -113,6 +113,6 @@ export const useSyncedFinancialData = () => {
     addTransactionAndSync,
     updateTransactionAndSync,
     deleteTransactionAndSync,
-    forceRecalculation
+    forceRecalculation: forceCompleteRecalculation
   };
 };

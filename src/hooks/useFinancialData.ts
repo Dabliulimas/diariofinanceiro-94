@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
@@ -22,7 +23,7 @@ export const useFinancialData = () => {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
 
-  const { recalculateWithPropagation, propagateBalancesBetweenYears } = useBalancePropagation();
+  const { recalculateBalances } = useBalancePropagation();
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -39,20 +40,22 @@ export const useFinancialData = () => {
     }
   }, []);
 
-  // Save data to localStorage with immediate propagation
+  // Save data to localStorage with IMMEDIATE and COMPLETE recalculation
   useEffect(() => {
-    if (Object.keys(data).length === 0) return; // Don't save empty data
+    if (Object.keys(data).length === 0) return;
     
-    console.log('💾 Saving financial data with automatic propagation');
-    const propagatedData = propagateBalancesBetweenYears(data);
+    console.log('💾 Saving financial data with COMPLETE automatic recalculation');
     
-    // Only update state if there are actual changes
-    if (JSON.stringify(propagatedData) !== JSON.stringify(data)) {
-      setData(propagatedData);
+    // Aplica recálculo completo imediatamente
+    const recalculatedData = recalculateBalances(data);
+    
+    // Só atualiza estado se houver mudanças reais
+    if (JSON.stringify(recalculatedData) !== JSON.stringify(data)) {
+      setData(recalculatedData);
     }
     
-    localStorage.setItem('financialData', JSON.stringify(propagatedData));
-  }, [data, propagateBalancesBetweenYears]);
+    localStorage.setItem('financialData', JSON.stringify(recalculatedData));
+  }, [data, recalculateBalances]);
 
   const getDaysInMonth = (year: number, month: number): number => {
     return new Date(year, month + 1, 0).getDate();
@@ -115,11 +118,12 @@ export const useFinancialData = () => {
     });
   }, []);
 
+  // FUNÇÃO CRÍTICA: updateDayData com recálculo AUTOMÁTICO e IMEDIATO
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
     const numericValue = parseCurrency(value);
     const formattedValue = formatCurrency(numericValue);
     
-    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue}`);
+    console.log(`📝 Manual update with IMMEDIATE recalculation: ${year}-${month+1}-${day} ${field} = ${formattedValue}`);
     
     setData(prevData => {
       const newData = { ...prevData };
@@ -135,20 +139,26 @@ export const useFinancialData = () => {
         };
       }
       
+      // Atualiza o valor
       newData[year][month][day][field] = formattedValue;
-      return newData;
-    });
-  }, []);
-
-  // Função principal de recálculo com propagação automática recursiva
-  const recalculateBalances = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
-    console.log(`🧮 Starting balance recalculation with recursive year propagation`);
-    
-    setData(prevData => {
-      const recalculatedData = recalculateWithPropagation(prevData, startYear, startMonth, startDay);
+      
+      // RECÁLCULO IMEDIATO E COMPLETO a partir deste ponto
+      console.log(`🔄 Triggering COMPLETE recalculation from ${year}-${month+1}-${day}`);
+      const recalculatedData = recalculateBalances(newData, year, month, day);
+      
       return recalculatedData;
     });
-  }, [recalculateWithPropagation]);
+  }, [recalculateBalances]);
+
+  // Função principal de recálculo manual (se necessário)
+  const triggerCompleteRecalculation = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
+    console.log(`🧮 Manual trigger for complete recalculation`);
+    
+    setData(prevData => {
+      const recalculatedData = recalculateBalances(prevData, startYear, startMonth, startDay);
+      return recalculatedData;
+    });
+  }, [recalculateBalances]);
 
   const getMonthlyTotals = useCallback((year: number, month: number) => {
     if (!data[year] || !data[year][month]) {
@@ -231,6 +241,6 @@ export const useFinancialData = () => {
     getYearlyTotals,
     getDaysInMonth,
     formatCurrency,
-    recalculateBalances
+    recalculateBalances: triggerCompleteRecalculation
   };
 };

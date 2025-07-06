@@ -7,7 +7,6 @@ import SummaryCard from '../components/SummaryCard';
 import PredictiveAICoach from '../components/PredictiveAICoach';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
-import DailyMotivationalMessage from '../components/DailyMotivationalMessage';
 import DailyWisdomQuote from '../components/DailyWisdomQuote';
 import MonthNavigation from '../components/MonthNavigation';
 import FinancialTable from '../components/FinancialTable';
@@ -50,7 +49,7 @@ const Index = () => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
     
-    // Recalculate all balances with recursive year propagation
+    // Trigger COMPLETE recalculation
     requestAnimationFrame(() => {
       recalculateBalances();
     });
@@ -79,9 +78,14 @@ const Index = () => {
     setInputValues(prev => ({ ...prev, [key]: value }));
   };
 
+  // FUNÇÃO CRÍTICA: handleInputBlur com recálculo AUTOMÁTICO e COMPLETO
   const handleInputBlur = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
-    console.log('📝 Input blur:', { day, field, value });
+    console.log('📝 Input blur with AUTOMATIC COMPLETE recalculation:', { day, field, value });
+    
+    // Atualiza o dado (que já dispara recálculo automático via updateDayData)
     updateDayData(selectedYear, selectedMonth, day, field, value);
+    
+    // Remove do state local
     const key = getInputKey(day, field);
     setInputValues(prev => {
       const newValues = { ...prev };
@@ -89,11 +93,7 @@ const Index = () => {
       return newValues;
     });
     
-    // Immediate balance recalculation with recursive year propagation
-    console.log('🔄 Recalculating balances after manual input with recursive year propagation');
-    requestAnimationFrame(() => {
-      recalculateBalances(selectedYear, selectedMonth, day);
-    });
+    console.log('✅ Input processed with AUTOMATIC COMPLETE recalculation');
   };
 
   return (
@@ -107,10 +107,7 @@ const Index = () => {
           <p className="text-sm sm:text-lg md:text-xl text-gray-600">Coach Inteligente com IA Preditiva</p>
         </div>
 
-        {/* Daily Motivational Message */}
-        <DailyMotivationalMessage />
-
-        {/* Daily Wisdom Quote */}
+        {/* Daily Wisdom Quote (only this one remains) */}
         <DailyWisdomQuote />
 
         {/* Year Selector */}
