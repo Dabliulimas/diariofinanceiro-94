@@ -4,10 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
 import SummaryCard from '../components/SummaryCard';
-import PredictiveAICoach from '../components/PredictiveAICoach';
+import SmartAlerts from '../components/SmartAlerts';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
-import DailyWisdomQuote from '../components/DailyWisdomQuote';
 import MonthNavigation from '../components/MonthNavigation';
 import FinancialTable from '../components/FinancialTable';
 import { Button } from '../components/ui/button';
@@ -53,7 +52,7 @@ const Index = () => {
   }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances]);
 
   useEffect(() => {
-    document.title = 'Diário Financeiro - Coach Inteligente com IA Preditiva';
+    document.title = 'Diário Financeiro - Alertas Inteligentes';
   }, []);
 
   const yearlyTotals = getYearlyTotals(selectedYear);  
@@ -90,10 +89,8 @@ const Index = () => {
           <h1 className="text-xl sm:text-2xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
             Diário Financeiro
           </h1>
-          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Coach Inteligente com IA Preditiva</p>
+          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Alertas Inteligentes</p>
         </div>
-
-        <DailyWisdomQuote />
 
         {/* Year Selector */}
         <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:justify-center sm:items-center sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
@@ -153,13 +150,12 @@ const Index = () => {
           </Button>
         </div>
 
-        <PredictiveAICoach
+        {/* Smart Alerts */}
+        <SmartAlerts
           data={data}
           selectedYear={selectedYear}
           selectedMonth={selectedMonth}
           monthlyTotals={monthlyTotals}
-          emergencyReserve={emergencyReserve}
-          fixedExpenses={fixedExpenses}
         />
 
         {/* Yearly Summary Cards */}
