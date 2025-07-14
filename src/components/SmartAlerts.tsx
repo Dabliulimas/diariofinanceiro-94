@@ -42,14 +42,76 @@ const SmartAlerts: React.FC<SmartAlertsProps> = ({
     const totalExpenses = monthlyTotals.totalSaidas + monthlyTotals.totalDiario;
     const totalIncome = monthlyTotals.totalEntradas;
 
-    // Alerta de saldo negativo
+    // Encontrar o primeiro dia com saldo negativo
+    const findNegativeBalanceDay = () => {
+      const days = Object.keys(monthData).map(Number).sort((a, b) => a - b);
+      for (const day of days) {
+        const dayData = monthData[day];
+        if (dayData.balance < 0) {
+          return day;
+        }
+      }
+      return null;
+    };
+
+    // Alerta de saldo negativo com dia específico
     if (monthlyTotals.saldoFinal < 0) {
+      const negativeDay = findNegativeBalanceDay();
+      const dayMessage = negativeDay 
+        ? ` O saldo ficou negativo no dia ${negativeDay}.`
+        : '';
+      
       alertsList.push({
         type: 'destructive',
         icon: AlertTriangle,
         title: 'Saldo Negativo',
-        message: `Seu saldo está negativo em ${formatCurrency(Math.abs(monthlyTotals.saldoFinal))}. Revise seus gastos.`
+        message: `Seu saldo está negativo em ${formatCurrency(Math.abs(monthlyTotals.saldoFinal))}.${dayMessage} Revise seus gastos urgentemente.`
       });
+    }
+
+    // Previsão de saldo negativo para mês atual
+    if (isCurrentMonth && monthlyTotals.saldoFinal >= 0) {
+      const days = Object.keys(monthData).map(Number).sort((a, b) => a - b);
+      let runningBalance = 0;
+      let predictedNegativeDay = null;
+
+      // Calcular média de gastos dos últimos dias para projeção
+      const recentDays = days.filter(day => day <= currentDay && day > 0);
+      if (recentDays.length >= 3) {
+        const recentExpenses = recentDays.map(day => {
+          const dayData = monthData[day];
+          return parseCurrency(dayData.saida) + parseCurrency(dayData.diario);
+        });
+        
+        const avgDailyExpense = recentExpenses.reduce((sum, exp) => sum + exp, 0) / recentExpenses.length;
+        
+        // Recalcular saldo atual
+        for (const day of days) {
+          if (day <= currentDay) {
+            const dayData = monthData[day];
+            runningBalance = dayData.balance;
+          }
+        }
+
+        // Projetar próximos dias
+        const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+        for (let futureDay = currentDay + 1; futureDay <= daysInMonth; futureDay++) {
+          runningBalance -= avgDailyExpense;
+          if (runningBalance < 0 && !predictedNegativeDay) {
+            predictedNegativeDay = futureDay;
+            break;
+          }
+        }
+
+        if (predictedNegativeDay && avgDailyExpense > 0) {
+          alertsList.push({
+            type: 'default',
+            icon: AlertTriangle,
+            title: 'Risco de Saldo Negativo',
+            message: `Com base nos seus gastos atuais (média de ${formatCurrency(avgDailyExpense)}/dia), seu saldo pode ficar negativo no dia ${predictedNegativeDay}. Monitore seus gastos.`
+          });
+        }
+      }
     }
 
     // Alerta de gastos altos em relação à renda
