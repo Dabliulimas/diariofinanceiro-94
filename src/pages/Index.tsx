@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
@@ -56,43 +57,48 @@ const Index = () => {
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
+  // Initialize month when year/month changes
   useEffect(() => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions when month changes or recurring transactions change
+  // Process recurring transactions when month changes
   useEffect(() => {
     console.log('🔄 Processing recurring transactions effect triggered');
     
-    if (recurringTransactions.length > 0) {
+    const activeTransactions = getActiveRecurringTransactions();
+    if (activeTransactions.length > 0) {
       processRecurringTransactions(
-        recurringTransactions,
+        activeTransactions,
         selectedYear,
         selectedMonth,
         addToDay,
         updateRecurringTransaction
       );
       
-      // Force recalculation after processing
+      // Trigger recalculation after processing
       setTimeout(() => {
         recalculateBalances();
       }, 100);
     }
-  }, [selectedYear, selectedMonth, recurringTransactions.length, processRecurringTransactions, addToDay, updateRecurringTransaction, recalculateBalances]);
+  }, [selectedYear, selectedMonth, recurringTransactions.length, processRecurringTransactions, addToDay, updateRecurringTransaction, recalculateBalances, getActiveRecurringTransactions]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
   }, []);
 
+  // Calculate totals
   const yearlyTotals = getYearlyTotals(selectedYear);  
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
 
+  // Generate years array
   const currentYear = new Date().getFullYear();
   const startYear = Math.max(2025, currentYear);
   const years = Array.from({ length: 15 }, (_, i) => startYear + i);
 
+  // Input handling helpers
   const getInputKey = (day: number, field: string) => `${selectedYear}-${selectedMonth}-${day}-${field}`;
 
   const handleInputChange = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
@@ -111,6 +117,7 @@ const Index = () => {
     });
   };
 
+  // Calculate total recurring amount
   const totalRecurringAmount = getActiveRecurringTransactions().reduce((sum, t) => {
     return sum + (t.type === 'entrada' ? t.amount : -t.amount);
   }, 0);
@@ -157,7 +164,7 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Reserve, Expenses, and Recurring Buttons */}
+        {/* Control Buttons */}
         <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <Button
             onClick={() => setShowReserveModal(true)}
@@ -278,6 +285,7 @@ const Index = () => {
           getTransactionsByDate={getTransactionsByDate}
         />
 
+        {/* Modals */}
         <EmergencyReserveModal
           isOpen={showReserveModal}
           onClose={() => setShowReserveModal(false)}
