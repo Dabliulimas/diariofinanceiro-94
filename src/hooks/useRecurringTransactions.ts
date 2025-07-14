@@ -7,8 +7,11 @@ export interface RecurringTransaction {
   amount: number;
   description: string;
   dayOfMonth: number;
-  frequency: 'until-cancelled' | 'fixed-count';
+  frequency: 'until-cancelled' | 'fixed-count' | 'monthly-duration';
   remainingCount?: number;
+  monthsDuration?: number;
+  remainingMonths?: number;
+  startDate: string; // ISO date string
   isActive: boolean;
   createdAt: string;
 }
@@ -37,11 +40,12 @@ export const useRecurringTransactions = () => {
     localStorage.setItem('recurringTransactions', JSON.stringify(recurringTransactions));
   }, [recurringTransactions]);
 
-  const addRecurringTransaction = useCallback((transaction: Omit<RecurringTransaction, 'id' | 'createdAt'>): RecurringTransaction => {
+  const addRecurringTransaction = useCallback((transaction: Omit<RecurringTransaction, 'id' | 'createdAt' | 'startDate'>): RecurringTransaction => {
     const newTransaction: RecurringTransaction = {
       ...transaction,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      startDate: new Date().toISOString()
     };
     
     console.log('➕ Adding recurring transaction:', newTransaction);

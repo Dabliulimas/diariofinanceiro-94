@@ -19,12 +19,12 @@ import { Button } from './ui/button';
 import { useForm } from 'react-hook-form';
 import { RecurringTransaction } from '../hooks/useRecurringTransactions';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Edit } from 'lucide-react';
 
 interface RecurringTransactionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (transaction: Omit<RecurringTransaction, 'id' | 'createdAt'>) => void;
+  onSave: (transaction: Omit<RecurringTransaction, 'id' | 'createdAt' | 'startDate'>) => void;
   onUpdate: (id: string, updates: Partial<RecurringTransaction>) => void;
   onDelete: (id: string) => void;
   currentTransactions: RecurringTransaction[];
@@ -35,8 +35,9 @@ interface FormData {
   amount: string;
   description: string;
   dayOfMonth: string;
-  frequency: 'until-cancelled' | 'fixed-count';
+  frequency: 'until-cancelled' | 'fixed-count' | 'monthly-duration';
   remainingCount: string;
+  monthsDuration: string;
 }
 
 const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
@@ -48,6 +49,7 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
   currentTransactions
 }) => {
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<RecurringTransaction | null>(null);
 
   const form = useForm<FormData>({
     defaultValues: {
@@ -56,24 +58,53 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
       description: '',
       dayOfMonth: '1',
       frequency: 'until-cancelled',
-      remainingCount: '1'
+      remainingCount: '1',
+      monthsDuration: '12'
     }
   });
 
+  const startEdit = (transaction: RecurringTransaction) => {
+    setEditingTransaction(transaction);
+    form.reset({
+      type: transaction.type,
+      amount: formatCurrency(transaction.amount),
+      description: transaction.description,
+      dayOfMonth: transaction.dayOfMonth.toString(),
+      frequency: transaction.frequency,
+      remainingCount: transaction.remainingCount?.toString() || '1',
+      monthsDuration: transaction.monthsDuration?.toString() || '12'
+    });
+    setShowForm(true);
+  };
+
   const handleSubmit = (data: FormData) => {
-    const transaction: Omit<RecurringTransaction, 'id' | 'createdAt'> = {
+    const transactionData = {
       type: data.type,
       amount: parseCurrency(data.amount),
       description: data.description,
       dayOfMonth: parseInt(data.dayOfMonth),
       frequency: data.frequency,
       remainingCount: data.frequency === 'fixed-count' ? parseInt(data.remainingCount) : undefined,
+      monthsDuration: data.frequency === 'monthly-duration' ? parseInt(data.monthsDuration) : undefined,
+      remainingMonths: data.frequency === 'monthly-duration' ? parseInt(data.monthsDuration) : undefined,
       isActive: true
     };
 
-    onSave(transaction);
+    if (editingTransaction) {
+      onUpdate(editingTransaction.id, transactionData);
+    } else {
+      onSave(transactionData);
+    }
+    
     form.reset();
     setShowForm(false);
+    setEditingTransaction(null);
+  };
+
+  const cancelEdit = () => {
+    setShowForm(false);
+    setEditingTransaction(null);
+    form.reset();
   };
 
   const handleToggleActive = (id: string, isActive: boolean) => {
@@ -83,6 +114,19 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
   const handleAmountChange = (value: string) => {
     const numericValue = parseCurrency(value);
     form.setValue('amount', formatCurrency(numericValue));
+  };
+
+  const getFrequencyLabel = (transaction: RecurringTransaction) => {
+    switch (transaction.frequency) {
+      case 'until-cancelled':
+        return 'Até cancelar';
+      case 'fixed-count':
+        return `${transaction.remainingCount} vezes restantes`;
+      case 'monthly-duration':
+        return `${transaction.remainingMonths} meses restantes`;
+      default:
+        return 'Indefinido';
+    }
   };
 
   return (
@@ -98,9 +142,12 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
           {/* Lista de transações recorrentes */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Transações Ativas</h3>
+              <h3 className="text-lg font-semibold">Transações Cadastradas</h3>
               <Button
-                onClick={() => setShowForm(!showForm)}
+                onClick={() => {
+                  setEditingTransaction(null);
+                  setShowForm(!showForm);
+                }}
                 className="bg-green-500 hover:bg-green-600"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -145,12 +192,18 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
                         </div>
                         <p className="text-gray-700 mb-1">{transaction.description}</p>
                         <p className="text-sm text-gray-500">
-                          {transaction.frequency === 'until-cancelled'
-                            ? 'Até cancelar'
-                            : `${transaction.remainingCount} vezes restantes`}
+                          {getFrequencyLabel(transaction)}
                         </p>
                       </div>
                       <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEdit(transaction)}
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
                         <Button
                           variant={transaction.isActive ? "outline" : "default"}
                           size="sm"
@@ -174,10 +227,12 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
             )}
           </div>
 
-          {/* Formulário para nova transação */}
+          {/* Formulário para nova/editar transação */}
           {showForm && (
             <div className="border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Nova Transação Recorrente</h3>
+              <h3 className="text-lg font-semibold mb-4">
+                {editingTransaction ? 'Editar Transação Recorrente' : 'Nova Transação Recorrente'}
+              </h3>
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
                 <p className="text-sm text-yellow-800">
                   ⚠️ <strong>Importante:</strong> Cadastre apenas transações certas e regulares. 
@@ -268,7 +323,7 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
                       name="frequency"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Frequência</FormLabel>
+                          <FormLabel>Tipo de Recorrência</FormLabel>
                           <FormControl>
                             <select
                               {...field}
@@ -276,6 +331,7 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
                             >
                               <option value="until-cancelled">Até cancelar</option>
                               <option value="fixed-count">Número fixo de vezes</option>
+                              <option value="monthly-duration">Duração em meses</option>
                             </select>
                           </FormControl>
                           <FormMessage />
@@ -303,16 +359,37 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
                         )}
                       />
                     )}
+
+                    {form.watch('frequency') === 'monthly-duration' && (
+                      <FormField
+                        control={form.control}
+                        name="monthsDuration"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Quantos meses</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="number"
+                                min="1"
+                                placeholder="12"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </div>
 
                   <div className="flex gap-3 pt-4">
                     <Button type="submit" className="bg-green-500 hover:bg-green-600">
-                      Salvar Recorrência
+                      {editingTransaction ? 'Atualizar Recorrência' : 'Salvar Recorrência'}
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setShowForm(false)}
+                      onClick={cancelEdit}
                     >
                       Cancelar
                     </Button>

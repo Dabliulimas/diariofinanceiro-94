@@ -15,7 +15,25 @@ export const useRecurringProcessor = () => {
     console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1}`);
     
     activeTransactions.forEach(transaction => {
-      const { dayOfMonth, type, amount, frequency, remainingCount, id } = transaction;
+      const { dayOfMonth, type, amount, frequency, remainingCount, monthsDuration, remainingMonths, startDate, id } = transaction;
+      
+      // Check if this transaction should be processed for this month
+      const startDateObj = new Date(startDate);
+      const currentDate = new Date(year, month);
+      
+      // Skip if transaction hasn't started yet
+      if (currentDate < new Date(startDateObj.getFullYear(), startDateObj.getMonth())) {
+        return;
+      }
+      
+      // Check if monthly duration has expired
+      if (frequency === 'monthly-duration' && monthsDuration && remainingMonths !== undefined) {
+        if (remainingMonths <= 0) {
+          updateRecurringTransaction(id, { isActive: false });
+          console.log(`🔄 Deactivated recurring transaction ${id} - monthly duration expired`);
+          return;
+        }
+      }
       
       // Check if day exists in the current month
       const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -26,17 +44,20 @@ export const useRecurringProcessor = () => {
       // Add to the appropriate day using the correct type (entrada/saida, not diario)
       addToDay(year, month, targetDay, type, amount);
       
-      // Update remaining count for fixed-count transactions
+      // Update counts based on frequency type
       if (frequency === 'fixed-count' && remainingCount !== undefined) {
         const newCount = remainingCount - 1;
         if (newCount <= 0) {
-          // Deactivate when count reaches zero
           updateRecurringTransaction(id, { isActive: false, remainingCount: 0 });
           console.log(`🔄 Deactivated recurring transaction ${id} - count reached zero`);
         } else {
           updateRecurringTransaction(id, { remainingCount: newCount });
           console.log(`🔄 Updated remaining count for ${id}: ${newCount}`);
         }
+      } else if (frequency === 'monthly-duration' && remainingMonths !== undefined) {
+        const newMonthsRemaining = remainingMonths - 1;
+        updateRecurringTransaction(id, { remainingMonths: newMonthsRemaining });
+        console.log(`🔄 Updated remaining months for ${id}: ${newMonthsRemaining}`);
       }
     });
   }, []);
