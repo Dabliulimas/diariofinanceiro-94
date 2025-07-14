@@ -59,20 +59,27 @@ const Index = () => {
   useEffect(() => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
+  }, [selectedYear, selectedMonth, initializeMonth]);
+
+  // Process recurring transactions when month changes or recurring transactions change
+  useEffect(() => {
+    console.log('🔄 Processing recurring transactions effect triggered');
     
-    // Process recurring transactions for the current month
-    processRecurringTransactions(
-      recurringTransactions,
-      selectedYear,
-      selectedMonth,
-      addToDay,
-      updateRecurringTransaction
-    );
-    
-    requestAnimationFrame(() => {
-      recalculateBalances();
-    });
-  }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances, processRecurringTransactions, recurringTransactions, addToDay, updateRecurringTransaction]);
+    if (recurringTransactions.length > 0) {
+      processRecurringTransactions(
+        recurringTransactions,
+        selectedYear,
+        selectedMonth,
+        addToDay,
+        updateRecurringTransaction
+      );
+      
+      // Force recalculation after processing
+      setTimeout(() => {
+        recalculateBalances();
+      }, 100);
+    }
+  }, [selectedYear, selectedMonth, recurringTransactions.length, processRecurringTransactions, addToDay, updateRecurringTransaction, recalculateBalances]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';

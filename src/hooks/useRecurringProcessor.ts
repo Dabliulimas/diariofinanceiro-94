@@ -23,7 +23,7 @@ export const useRecurringProcessor = () => {
       
       console.log(`💰 Adding recurring ${type}: ${amount} on day ${targetDay}`);
       
-      // Add to the appropriate day (entrada goes to entrada, saida goes to saida)
+      // Add to the appropriate day using the correct type (entrada/saida, not diario)
       addToDay(year, month, targetDay, type, amount);
       
       // Update remaining count for fixed-count transactions
