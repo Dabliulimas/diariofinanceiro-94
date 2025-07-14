@@ -1,12 +1,14 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
+import { useRecurringTransactions } from '../hooks/useRecurringTransactions';
+import { useRecurringProcessor } from '../hooks/useRecurringProcessor';
 import SummaryCard from '../components/SummaryCard';
 import SmartAlerts from '../components/SmartAlerts';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
 import FixedExpensesModal from '../components/FixedExpensesModal';
+import RecurringTransactionsModal from '../components/RecurringTransactionsModal';
 import MonthNavigation from '../components/MonthNavigation';
 import FinancialTable from '../components/FinancialTable';
 import { Button } from '../components/ui/button';
@@ -28,7 +30,8 @@ const Index = () => {
     getDaysInMonth,
     formatCurrency,
     recalculateBalances,
-    getTransactionsByDate
+    getTransactionsByDate,
+    addToDay
   } = useSyncedFinancialData();
 
   const {
@@ -38,18 +41,38 @@ const Index = () => {
     updateFixedExpenses
   } = useReserveAndExpenses();
 
+  const {
+    recurringTransactions,
+    addRecurringTransaction,
+    updateRecurringTransaction,
+    deleteRecurringTransaction,
+    getActiveRecurringTransactions
+  } = useRecurringTransactions();
+
+  const { processRecurringTransactions } = useRecurringProcessor();
+
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
 
   useEffect(() => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
     
+    // Process recurring transactions for the current month
+    processRecurringTransactions(
+      recurringTransactions,
+      selectedYear,
+      selectedMonth,
+      addToDay,
+      updateRecurringTransaction
+    );
+    
     requestAnimationFrame(() => {
       recalculateBalances();
     });
-  }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances]);
+  }, [selectedYear, selectedMonth, initializeMonth, recalculateBalances, processRecurringTransactions, recurringTransactions, addToDay, updateRecurringTransaction]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
@@ -80,6 +103,10 @@ const Index = () => {
       return newValues;
     });
   };
+
+  const totalRecurringAmount = getActiveRecurringTransactions().reduce((sum, t) => {
+    return sum + (t.type === 'entrada' ? t.amount : -t.amount);
+  }, 0);
 
   return (
     <div className="min-h-screen bg-gray-50 py-2 sm:py-4 md:py-8">
@@ -123,7 +150,7 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Reserve and Expenses Buttons */}
+        {/* Reserve, Expenses, and Recurring Buttons */}
         <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3 mb-4 sm:mb-6">
           <Button
             onClick={() => setShowReserveModal(true)}
@@ -146,6 +173,20 @@ const Index = () => {
               <span className="mr-1">📊</span>
               <span className="hidden xs:inline">Gastos: </span>
               <span className="font-medium">{formatCurrency(fixedExpenses.totalAmount)}</span>
+            </span>
+          </Button>
+
+          <Button
+            onClick={() => setShowRecurringModal(true)}
+            variant="outline"
+            className="border-2 border-orange-500 text-orange-600 hover:bg-orange-50 text-xs sm:text-sm px-2 sm:px-4 py-2 w-full sm:w-auto"
+          >
+            <span className="flex items-center justify-center">
+              <span className="mr-1">🔄</span>
+              <span className="hidden xs:inline">Recorrentes: </span>
+              <span className={`font-medium ${totalRecurringAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(totalRecurringAmount)}
+              </span>
             </span>
           </Button>
         </div>
@@ -244,6 +285,15 @@ const Index = () => {
           onClose={() => setShowExpensesModal(false)}
           onSave={updateFixedExpenses}
           currentCategories={fixedExpenses.categories}
+        />
+
+        <RecurringTransactionsModal
+          isOpen={showRecurringModal}
+          onClose={() => setShowRecurringModal(false)}
+          onSave={addRecurringTransaction}
+          onUpdate={updateRecurringTransaction}
+          onDelete={deleteRecurringTransaction}
+          currentTransactions={recurringTransactions}
         />
       </div>
     </div>
