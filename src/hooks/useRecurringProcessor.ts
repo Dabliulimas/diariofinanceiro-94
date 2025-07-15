@@ -7,7 +7,12 @@ export const useRecurringProcessor = () => {
     recurringTransactions: RecurringTransaction[],
     year: number,
     month: number,
-    addToDay: (year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number) => void,
+    addTransactionAndSync: (transaction: {
+      type: 'entrada' | 'saida';
+      amount: number;
+      description: string;
+      date: string;
+    }) => void,
     updateRecurringTransaction: (id: string, updates: Partial<RecurringTransaction>) => void
   ) => {
     const currentDate = new Date();
@@ -26,7 +31,7 @@ export const useRecurringProcessor = () => {
     console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1}`);
     
     activeTransactions.forEach(transaction => {
-      const { dayOfMonth, type, amount, frequency, remainingCount, monthsDuration, remainingMonths, startDate, id } = transaction;
+      const { dayOfMonth, type, amount, frequency, remainingCount, monthsDuration, remainingMonths, startDate, id, description } = transaction;
       
       // Verificar se a transação deve ser processada para este mês
       const startDateObj = new Date(startDate);
@@ -70,13 +75,20 @@ export const useRecurringProcessor = () => {
         return;
       }
       
-      console.log(`💰 Adding recurring ${type}: ${amount} on day ${targetDay} for ${year}-${month + 1}`);
+      // Formatar data no padrão YYYY-MM-DD
+      const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
       
-      // Adicionar ao dia apropriado
-      addToDay(year, month, targetDay, type, amount);
+      console.log(`💰 Adding recurring ${type}: ${amount} on ${formattedDate} - ${description}`);
+      
+      // Usar a mesma função que o lançamento rápido usa
+      addTransactionAndSync({
+        type,
+        amount,
+        description: `🔄 ${description}`,
+        date: formattedDate
+      });
       
       // Atualizar contadores apenas se estamos processando o mês atual ou futuro
-      // e apenas uma vez por processamento
       if (frequency === 'fixed-count' && remainingCount !== undefined) {
         const newCount = Math.max(0, remainingCount - 1);
         const updates: Partial<RecurringTransaction> = { remainingCount: newCount };

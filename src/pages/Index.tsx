@@ -31,7 +31,7 @@ const Index = () => {
     formatCurrency,
     recalculateBalances,
     getTransactionsByDate,
-    addToDay
+    addTransactionAndSync
   } = useSyncedFinancialData();
 
   const {
@@ -56,9 +56,8 @@ const Index = () => {
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
-  // Controle para evitar processamento múltiplo
-  const processedMonthsRef = useRef<Set<string>>(new Set());
-  const lastProcessedTransactionsRef = useRef<number>(0);
+  // Controle rigoroso para evitar processamento múltiplo
+  const processedKeysRef = useRef<Set<string>>(new Set());
 
   // Initialize month when year/month changes
   useEffect(() => {
@@ -66,40 +65,41 @@ const Index = () => {
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions - com controle para evitar duplicatas
+  // Process recurring transactions - APENAS UMA VEZ por mês
   useEffect(() => {
     const monthKey = `${selectedYear}-${selectedMonth}`;
-    const currentTransactionsCount = recurringTransactions.length;
     
-    // Só processa se:
-    // 1. Não foi processado ainda para este mês OU
-    // 2. O número de transações recorrentes mudou (nova transação adicionada)
-    if (!processedMonthsRef.current.has(monthKey) || 
-        currentTransactionsCount !== lastProcessedTransactionsRef.current) {
-      
-      console.log(`🔄 Processing recurring transactions for ${monthKey}`);
-      
-      const activeTransactions = getActiveRecurringTransactions();
-      if (activeTransactions.length > 0) {
-        processRecurringTransactions(
-          activeTransactions,
-          selectedYear,
-          selectedMonth,
-          addToDay,
-          updateRecurringTransaction
-        );
-        
-        // Marcar como processado
-        processedMonthsRef.current.add(monthKey);
-        lastProcessedTransactionsRef.current = currentTransactionsCount;
-        
-        // Recalcular saldos após processamento
-        setTimeout(() => {
-          recalculateBalances();
-        }, 100);
-      }
+    // Verificar se já foi processado
+    if (processedKeysRef.current.has(monthKey)) {
+      console.log(`⏭️ Month ${monthKey} already processed, skipping`);
+      return;
     }
-  }, [selectedYear, selectedMonth, recurringTransactions.length, processRecurringTransactions, addToDay, updateRecurringTransaction, recalculateBalances, getActiveRecurringTransactions]);
+
+    const activeTransactions = getActiveRecurringTransactions();
+    if (activeTransactions.length === 0) {
+      console.log(`⏭️ No active recurring transactions for ${monthKey}`);
+      processedKeysRef.current.add(monthKey);
+      return;
+    }
+
+    console.log(`🔄 Processing recurring transactions for ${monthKey} - First time`);
+    
+    // Marcar como processado ANTES de processar para evitar loops
+    processedKeysRef.current.add(monthKey);
+    
+    // Usar timeout para garantir que a inicialização do mês terminou
+    const timeoutId = setTimeout(() => {
+      processRecurringTransactions(
+        activeTransactions,
+        selectedYear,
+        selectedMonth,
+        addTransactionAndSync,
+        updateRecurringTransaction
+      );
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
@@ -190,7 +190,7 @@ const Index = () => {
           >
             <span className="flex items-center justify-center">
               <span className="mr-1">🛡️</span>
-              <span className="hidden xs:inline">Reserva: </span>
+              <span className="hidden xs:inline">Reserva: </span> 
               <span className="font-medium">{formatCurrency(emergencyReserve.amount)}</span>
             </span>
           </Button>
@@ -202,7 +202,7 @@ const Index = () => {
           >
             <span className="flex items-center justify-center">
               <span className="mr-1">📊</span>
-              <span className="hidden xs:inline">Gastos: </span>
+              <span className="hidden xs:inline">Gastos: </span> 
               <span className="font-medium">{formatCurrency(fixedExpenses.totalAmount)}</span>
             </span>
           </Button>
@@ -330,6 +330,25 @@ const Index = () => {
       </div>
     </div>
   );
+};
+
+// Input handling helpers
+const getInputKey = (day: number, field: string) => `${selectedYear}-${selectedMonth}-${day}-${field}`;
+
+const handleInputChange = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
+  const key = getInputKey(day, field);
+  setInputValues(prev => ({ ...prev, [key]: value }));
+};
+
+const handleInputBlur = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
+  updateDayData(selectedYear, selectedMonth, day, field, value);
+  
+  const key = getInputKey(day, field);
+  setInputValues(prev => {
+    const newValues = { ...prev };
+    delete newValues[key];
+    return newValues;
+  });
 };
 
 export default Index;
