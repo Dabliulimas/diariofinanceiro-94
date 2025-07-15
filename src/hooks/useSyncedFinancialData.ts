@@ -11,67 +11,108 @@ export const useSyncedFinancialData = () => {
   const rebuildFinancialDataFromTransactions = useCallback((): void => {
     console.log('🔄 Rebuilding financial data from transactions');
     
-    // Limpar todos os dados financeiros primeiro
-    const allTransactions = transactions.transactions;
-    
-    // Reconstruir dados financeiros do zero
-    allTransactions.forEach(transaction => {
-      const [year, month, day] = transaction.date.split('-').map(Number);
-      const actualMonth = month - 1;
-      
-      financialData.initializeMonth(year, actualMonth);
-      financialData.addToDay(year, actualMonth, day, transaction.type, transaction.amount);
-    });
-    
-    // Recálculo completo dos saldos
+    // Aguardar um frame para garantir que as transações estão atualizadas
     requestAnimationFrame(() => {
-      financialData.recalculateBalances();
-      console.log('✅ Complete data rebuild finished');
+      const allTransactions = transactions.transactions;
+      
+      // Limpar dados financeiros primeiro
+      // Não podemos limpar diretamente, então vamos reconstruir do zero
+      const transactionsByDate: { [date: string]: { entrada: number; saida: number; diario: number } } = {};
+      
+      // Agrupar transações por data
+      allTransactions.forEach(transaction => {
+        const [year, month, day] = transaction.date.split('-').map(Number);
+        const dateKey = transaction.date;
+        
+        if (!transactionsByDate[dateKey]) {
+          transactionsByDate[dateKey] = { entrada: 0, saida: 0, diario: 0 };
+        }
+        
+        transactionsByDate[dateKey][transaction.type] += transaction.amount;
+        
+        // Inicializar mês se necessário
+        financialData.initializeMonth(year, month - 1);
+      });
+      
+      // Aplicar os valores agrupados
+      Object.entries(transactionsByDate).forEach(([dateKey, values]) => {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        
+        // Atualizar cada tipo de transação
+        if (values.entrada > 0) {
+          financialData.updateDayData(year, month - 1, day, 'entrada', `R$ ${values.entrada.toFixed(2).replace('.', ',')}`);
+        }
+        if (values.saida > 0) {
+          financialData.updateDayData(year, month - 1, day, 'saida', `R$ ${values.saida.toFixed(2).replace('.', ',')}`);
+        }
+        if (values.diario > 0) {
+          financialData.updateDayData(year, month - 1, day, 'diario', `R$ ${values.diario.toFixed(2).replace('.', ',')}`);
+        }
+      });
+      
+      console.log('✅ Financial data rebuild completed');
     });
   }, [financialData, transactions]);
 
-  // MAIN SYNC FUNCTION with COMPLETE recalculation
+  // MAIN SYNC FUNCTION - simplificada para evitar loops
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction with COMPLETE sync:', transaction);
+    console.log('🔄 Adding transaction with sync:', transaction);
     
-    // Add to transactions
+    // Verificar se já existe uma transação idêntica
+    const existingTransaction = transactions.transactions.find(t => 
+      t.date === transaction.date && 
+      t.type === transaction.type && 
+      t.description === transaction.description &&
+      t.amount === transaction.amount
+    );
+    
+    if (existingTransaction) {
+      console.log('⏭️ Transaction already exists, skipping:', transaction);
+      return;
+    }
+    
+    // Adicionar transação
     const newTransaction = transactions.addTransaction(transaction);
     
-    // Rebuild financial data completely to ensure accuracy
-    rebuildFinancialDataFromTransactions();
+    // Aplicar ao dados financeiros
+    const [year, month, day] = transaction.date.split('-').map(Number);
+    financialData.initializeMonth(year, month - 1);
+    financialData.addToDay(year, month - 1, day, transaction.type, transaction.amount);
     
-    console.log('✅ Transaction added with COMPLETE rebuild');
-  }, [transactions, rebuildFinancialDataFromTransactions]);
+    console.log('✅ Transaction added and synced');
+  }, [transactions, financialData]);
 
-  // UPDATE with COMPLETE rebuild
+  // UPDATE with targeted rebuild
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('🔄 Updating transaction with COMPLETE rebuild:', id, updates);
+    console.log('🔄 Updating transaction:', id, updates);
     
-    // Update transaction
     transactions.updateTransaction(id, updates);
     
-    // Rebuild financial data completely
-    rebuildFinancialDataFromTransactions();
+    // Rebuild after update
+    setTimeout(() => {
+      rebuildFinancialDataFromTransactions();
+    }, 100);
     
-    console.log('✅ Transaction updated with COMPLETE rebuild');
+    console.log('✅ Transaction updated');
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
-  // DELETE with COMPLETE rebuild
+  // DELETE with targeted rebuild
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🔄 Deleting transaction with COMPLETE rebuild:', id);
+    console.log('🔄 Deleting transaction:', id);
     
-    // Delete transaction
     transactions.deleteTransaction(id);
     
-    // Rebuild financial data completely
-    rebuildFinancialDataFromTransactions();
+    // Rebuild after deletion
+    setTimeout(() => {
+      rebuildFinancialDataFromTransactions();
+    }, 100);
     
-    console.log('✅ Transaction deleted with COMPLETE rebuild');
+    console.log('✅ Transaction deleted');
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
-  // Force COMPLETE recalculation
+  // Force complete recalculation
   const forceCompleteRecalculation = useCallback((): void => {
-    console.log('🔄 Forcing COMPLETE recalculation');
+    console.log('🔄 Forcing complete recalculation');
     rebuildFinancialDataFromTransactions();
   }, [rebuildFinancialDataFromTransactions]);
 

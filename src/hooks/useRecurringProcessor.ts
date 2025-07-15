@@ -29,6 +29,11 @@ export const useRecurringProcessor = () => {
 
     const activeTransactions = recurringTransactions.filter(t => t.isActive);
     
+    if (activeTransactions.length === 0) {
+      console.log(`⏭️ No active recurring transactions for ${year}-${month + 1}`);
+      return;
+    }
+    
     console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1}`);
     
     activeTransactions.forEach(transaction => {
@@ -65,26 +70,16 @@ export const useRecurringProcessor = () => {
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const targetDay = Math.min(dayOfMonth, daysInMonth);
       
-      // Verificar se é um mês futuro ou se é o mês atual mas o dia ainda não passou
-      const today = new Date();
-      const targetDayDate = new Date(year, month, targetDay);
-      const isValidForProcessing = targetDayDate >= today || 
-        (year === currentYear && month === currentMonth && targetDay >= today.getDate());
-      
-      if (!isValidForProcessing) {
-        console.log(`⏭️ Skipping past date: ${year}-${month + 1}-${targetDay}`);
-        return;
-      }
-      
       // Formatar data no padrão YYYY-MM-DD
       const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
       
-      // Verificar se já existe um lançamento recorrente para esta data e descrição
+      // VERIFICAÇÃO CRÍTICA: Evitar duplicatas usando verificação mais rigorosa
+      const recurringDescription = `🔄 ${description}`;
       const existingRecurring = existingTransactions.find(t => 
         t.date === formattedDate && 
         t.type === type && 
-        t.description.includes('🔄') && 
-        t.description.includes(description)
+        t.description === recurringDescription &&
+        t.amount === amount
       );
       
       if (existingRecurring) {
@@ -92,33 +87,52 @@ export const useRecurringProcessor = () => {
         return;
       }
       
+      // Verificar se é uma data válida para processamento
+      const today = new Date();
+      const targetDayDate = new Date(year, month, targetDay);
+      
+      // Para meses futuros, sempre processar
+      // Para mês atual, só processar se o dia ainda não passou
+      const isValidForProcessing = year > currentYear || 
+        month > currentMonth || 
+        (year === currentYear && month === currentMonth && targetDay >= today.getDate());
+      
+      if (!isValidForProcessing) {
+        console.log(`⏭️ Skipping past date: ${year}-${month + 1}-${targetDay}`);
+        return;
+      }
+      
       console.log(`💰 Adding recurring ${type}: ${amount} on ${formattedDate} - ${description}`);
       
-      // Adicionar transação recorrente
-      addTransactionAndSync({
-        type,
-        amount,
-        description: `🔄 ${description}`,
-        date: formattedDate
-      });
-      
-      // Atualizar contadores apenas se estamos processando o mês atual ou futuro
-      if (frequency === 'fixed-count' && remainingCount !== undefined) {
-        const newCount = Math.max(0, remainingCount - 1);
-        const updates: Partial<RecurringTransaction> = { remainingCount: newCount };
-        if (newCount <= 0) {
-          updates.isActive = false;
+      // Adicionar transação recorrente com verificação adicional
+      try {
+        addTransactionAndSync({
+          type,
+          amount,
+          description: recurringDescription,
+          date: formattedDate
+        });
+        
+        // Atualizar contadores APENAS após adição bem-sucedida
+        if (frequency === 'fixed-count' && remainingCount !== undefined) {
+          const newCount = Math.max(0, remainingCount - 1);
+          const updates: Partial<RecurringTransaction> = { remainingCount: newCount };
+          if (newCount <= 0) {
+            updates.isActive = false;
+          }
+          updateRecurringTransaction(id, updates);
+          console.log(`🔄 Updated remaining count for ${id}: ${newCount}`);
+        } else if (frequency === 'monthly-duration' && remainingMonths !== undefined) {
+          const newMonthsRemaining = Math.max(0, remainingMonths - 1);
+          const updates: Partial<RecurringTransaction> = { remainingMonths: newMonthsRemaining };
+          if (newMonthsRemaining <= 0) {
+            updates.isActive = false;
+          }
+          updateRecurringTransaction(id, updates);
+          console.log(`🔄 Updated remaining months for ${id}: ${newMonthsRemaining}`);
         }
-        updateRecurringTransaction(id, updates);
-        console.log(`🔄 Updated remaining count for ${id}: ${newCount}`);
-      } else if (frequency === 'monthly-duration' && remainingMonths !== undefined) {
-        const newMonthsRemaining = Math.max(0, remainingMonths - 1);
-        const updates: Partial<RecurringTransaction> = { remainingMonths: newMonthsRemaining };
-        if (newMonthsRemaining <= 0) {
-          updates.isActive = false;
-        }
-        updateRecurringTransaction(id, updates);
-        console.log(`🔄 Updated remaining months for ${id}: ${newMonthsRemaining}`);
+      } catch (error) {
+        console.error(`❌ Error adding recurring transaction ${id}:`, error);
       }
     });
   }, []);
