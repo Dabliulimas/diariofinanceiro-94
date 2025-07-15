@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
@@ -31,7 +32,10 @@ const Index = () => {
     formatCurrency,
     recalculateBalances,
     getTransactionsByDate,
-    addTransactionAndSync
+    addTransactionAndSync,
+    updateTransactionAndSync,
+    deleteTransactionAndSync,
+    forceRecalculation
   } = useSyncedFinancialData();
 
   const {
@@ -101,6 +105,12 @@ const Index = () => {
     return () => clearTimeout(timeoutId);
   }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction]);
 
+  // Force complete recalculation when recurring transactions change
+  useEffect(() => {
+    console.log('🔄 Recurring transactions changed, forcing complete recalculation');
+    forceRecalculation();
+  }, [recurringTransactions, forceRecalculation]);
+
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
   }, []);
@@ -132,6 +142,40 @@ const Index = () => {
       delete newValues[key];
       return newValues;
     });
+  };
+
+  // Enhanced recurring transaction handlers with complete recalculation
+  const handleUpdateRecurringTransaction = (id: string, updates: any) => {
+    console.log('🔄 Updating recurring transaction with complete recalculation');
+    updateRecurringTransaction(id, updates);
+    // Clear processed keys to allow reprocessing
+    processedKeysRef.current.clear();
+    // Force complete recalculation
+    setTimeout(() => {
+      forceRecalculation();
+    }, 200);
+  };
+
+  const handleDeleteRecurringTransaction = (id: string) => {
+    console.log('🗑️ Deleting recurring transaction with complete recalculation');
+    deleteRecurringTransaction(id);
+    // Clear processed keys to allow reprocessing
+    processedKeysRef.current.clear();
+    // Force complete recalculation
+    setTimeout(() => {
+      forceRecalculation();
+    }, 200);
+  };
+
+  const handleAddRecurringTransaction = (transaction: any) => {
+    console.log('➕ Adding recurring transaction with complete recalculation');
+    addRecurringTransaction(transaction);
+    // Clear processed keys to allow reprocessing
+    processedKeysRef.current.clear();
+    // Force complete recalculation
+    setTimeout(() => {
+      forceRecalculation();
+    }, 200);
   };
 
   // Calculate total recurring amount
@@ -300,6 +344,8 @@ const Index = () => {
           onInputChange={handleInputChange}
           onInputBlur={handleInputBlur}
           getTransactionsByDate={getTransactionsByDate}
+          updateTransactionAndSync={updateTransactionAndSync}
+          deleteTransactionAndSync={deleteTransactionAndSync}
         />
 
         {/* Modals */}
@@ -322,33 +368,14 @@ const Index = () => {
         <RecurringTransactionsModal
           isOpen={showRecurringModal}
           onClose={() => setShowRecurringModal(false)}
-          onSave={addRecurringTransaction}
-          onUpdate={updateRecurringTransaction}
-          onDelete={deleteRecurringTransaction}
+          onSave={handleAddRecurringTransaction}
+          onUpdate={handleUpdateRecurringTransaction}
+          onDelete={handleDeleteRecurringTransaction}
           currentTransactions={recurringTransactions}
         />
       </div>
     </div>
   );
-};
-
-// Input handling helpers
-const getInputKey = (day: number, field: string) => `${selectedYear}-${selectedMonth}-${day}-${field}`;
-
-const handleInputChange = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
-  const key = getInputKey(day, field);
-  setInputValues(prev => ({ ...prev, [key]: value }));
-};
-
-const handleInputBlur = (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => {
-  updateDayData(selectedYear, selectedMonth, day, field, value);
-  
-  const key = getInputKey(day, field);
-  setInputValues(prev => {
-    const newValues = { ...prev };
-    delete newValues[key];
-    return newValues;
-  });
 };
 
 export default Index;

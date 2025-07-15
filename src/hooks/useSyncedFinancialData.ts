@@ -26,9 +26,9 @@ export const useSyncedFinancialData = () => {
     // Add to financial data
     financialData.addToDay(year, actualMonth, day, transaction.type, transaction.amount);
     
-    // IMMEDIATE and COMPLETE recalculation (the updateDayData already triggers this)
+    // IMMEDIATE and COMPLETE recalculation
     requestAnimationFrame(() => {
-      financialData.recalculateBalances(year, actualMonth, day);
+      financialData.recalculateBalances();
       console.log('✅ Transaction added with COMPLETE sync and propagation');
     });
   }, [transactions, financialData]);
@@ -64,13 +64,9 @@ export const useSyncedFinancialData = () => {
     financialData.initializeMonth(newYear, newActualMonth);
     financialData.addToDay(newYear, newActualMonth, newDay, newType, newAmount);
     
-    // Recalculate from earliest affected date with COMPLETE propagation
-    const earliestYear = Math.min(oldYear, newYear);
-    const earliestMonth = oldYear === newYear ? Math.min(oldActualMonth, newActualMonth) : (oldYear < newYear ? oldActualMonth : newActualMonth);
-    const earliestDay = oldYear === newYear && oldActualMonth === newActualMonth ? Math.min(oldDay, newDay) : oldDay;
-    
+    // COMPLETE recalculation from beginning
     requestAnimationFrame(() => {
-      financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
+      financialData.recalculateBalances();
       console.log('✅ Transaction updated with COMPLETE recalculation and propagation');
     });
   }, [transactions, financialData]);
@@ -93,19 +89,35 @@ export const useSyncedFinancialData = () => {
     
     transactions.deleteTransaction(id);
     
+    // COMPLETE recalculation from beginning
     requestAnimationFrame(() => {
-      financialData.recalculateBalances(year, actualMonth, day);
+      financialData.recalculateBalances();
       console.log('✅ Transaction deleted with COMPLETE recalculation and propagation');
     });
   }, [transactions, financialData]);
 
-  // Force COMPLETE recalculation
+  // Force COMPLETE recalculation - rebuilds everything from transactions
   const forceCompleteRecalculation = useCallback((): void => {
-    console.log('🔄 Forcing COMPLETE recalculation with full propagation');
+    console.log('🔄 Forcing COMPLETE recalculation with full data rebuild');
+    
+    // Clear all financial data first
+    const allTransactions = transactions.transactions;
+    
+    // Rebuild financial data from scratch
+    allTransactions.forEach(transaction => {
+      const [year, month, day] = transaction.date.split('-').map(Number);
+      const actualMonth = month - 1;
+      
+      financialData.initializeMonth(year, actualMonth);
+      financialData.addToDay(year, actualMonth, day, transaction.type, transaction.amount);
+    });
+    
+    // Full recalculation
     requestAnimationFrame(() => {
       financialData.recalculateBalances();
+      console.log('✅ Complete data rebuild and recalculation finished');
     });
-  }, [financialData]);
+  }, [financialData, transactions]);
 
   return {
     ...financialData,

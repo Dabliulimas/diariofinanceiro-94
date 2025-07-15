@@ -15,6 +15,8 @@ interface FinancialTableProps {
   onInputChange: (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => void;
   onInputBlur: (day: number, field: 'entrada' | 'saida' | 'diario', value: string) => void;
   getTransactionsByDate: (date: string) => TransactionEntry[];
+  updateTransactionAndSync: (id: string, updates: Partial<TransactionEntry>) => void;
+  deleteTransactionAndSync: (id: string) => void;
 }
 
 const FinancialTable: React.FC<FinancialTableProps> = ({
@@ -25,7 +27,9 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   inputValues,
   onInputChange,
   onInputBlur,
-  getTransactionsByDate
+  getTransactionsByDate,
+  updateTransactionAndSync,
+  deleteTransactionAndSync
 }) => {
   const navigate = useNavigate();
 
@@ -40,7 +44,7 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   const handleDayClick = (day: number) => {
     const date = new Date(selectedYear, selectedMonth, day);
     const dateString = date.toISOString().split('T')[0];
-    navigate(`/quick-entry?date=${dateString}`);
+    navigate(`/quick-entry?date=${dateString}&updateTransaction=${updateTransactionAndSync}&deleteTransaction=${deleteTransactionAndSync}`);
   };
 
   const renderDayRow = (day: number) => {
