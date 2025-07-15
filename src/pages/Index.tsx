@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
@@ -57,30 +56,48 @@ const Index = () => {
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
+  // Controle para evitar processamento múltiplo
+  const processedMonthsRef = useRef<Set<string>>(new Set());
+  const lastProcessedTransactionsRef = useRef<number>(0);
+
   // Initialize month when year/month changes
   useEffect(() => {
     initializeMonth(selectedYear, selectedMonth);
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions when month changes
+  // Process recurring transactions - com controle para evitar duplicatas
   useEffect(() => {
-    console.log('🔄 Processing recurring transactions effect triggered');
+    const monthKey = `${selectedYear}-${selectedMonth}`;
+    const currentTransactionsCount = recurringTransactions.length;
     
-    const activeTransactions = getActiveRecurringTransactions();
-    if (activeTransactions.length > 0) {
-      processRecurringTransactions(
-        activeTransactions,
-        selectedYear,
-        selectedMonth,
-        addToDay,
-        updateRecurringTransaction
-      );
+    // Só processa se:
+    // 1. Não foi processado ainda para este mês OU
+    // 2. O número de transações recorrentes mudou (nova transação adicionada)
+    if (!processedMonthsRef.current.has(monthKey) || 
+        currentTransactionsCount !== lastProcessedTransactionsRef.current) {
       
-      // Trigger recalculation after processing
-      setTimeout(() => {
-        recalculateBalances();
-      }, 100);
+      console.log(`🔄 Processing recurring transactions for ${monthKey}`);
+      
+      const activeTransactions = getActiveRecurringTransactions();
+      if (activeTransactions.length > 0) {
+        processRecurringTransactions(
+          activeTransactions,
+          selectedYear,
+          selectedMonth,
+          addToDay,
+          updateRecurringTransaction
+        );
+        
+        // Marcar como processado
+        processedMonthsRef.current.add(monthKey);
+        lastProcessedTransactionsRef.current = currentTransactionsCount;
+        
+        // Recalcular saldos após processamento
+        setTimeout(() => {
+          recalculateBalances();
+        }, 100);
+      }
     }
   }, [selectedYear, selectedMonth, recurringTransactions.length, processRecurringTransactions, addToDay, updateRecurringTransaction, recalculateBalances, getActiveRecurringTransactions]);
 
@@ -93,10 +110,10 @@ const Index = () => {
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
 
-  // Generate years array
+  // Generate years array - 50 anos a partir de 2025
   const currentYear = new Date().getFullYear();
   const startYear = Math.max(2025, currentYear);
-  const years = Array.from({ length: 15 }, (_, i) => startYear + i);
+  const years = Array.from({ length: 50 }, (_, i) => startYear + i);
 
   // Input handling helpers
   const getInputKey = (day: number, field: string) => `${selectedYear}-${selectedMonth}-${day}-${field}`;

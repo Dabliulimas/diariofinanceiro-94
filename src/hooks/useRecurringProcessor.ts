@@ -10,6 +10,17 @@ export const useRecurringProcessor = () => {
     addToDay: (year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number) => void,
     updateRecurringTransaction: (id: string, updates: Partial<RecurringTransaction>) => void
   ) => {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    const targetDate = new Date(year, month, 1);
+    
+    // Só processa se for mês atual ou futuro
+    if (targetDate < new Date(currentYear, currentMonth, 1)) {
+      console.log(`⏭️ Skipping processing for past month: ${year}-${month + 1}`);
+      return;
+    }
+
     const activeTransactions = recurringTransactions.filter(t => t.isActive);
     
     console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1}`);
@@ -17,65 +28,71 @@ export const useRecurringProcessor = () => {
     activeTransactions.forEach(transaction => {
       const { dayOfMonth, type, amount, frequency, remainingCount, monthsDuration, remainingMonths, startDate, id } = transaction;
       
-      // Check if this transaction should be processed for this month
+      // Verificar se a transação deve ser processada para este mês
       const startDateObj = new Date(startDate);
-      const currentMonthDate = new Date(year, month, 1);
+      const targetMonthDate = new Date(year, month, 1);
       const startMonthDate = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), 1);
       
-      // Skip if transaction hasn't started yet
-      if (currentMonthDate < startMonthDate) {
-        console.log(`⏭️ Skipping transaction ${id} - hasn't started yet`);
+      // Pular se a transação ainda não começou
+      if (targetMonthDate < startMonthDate) {
+        console.log(`⏭️ Transaction ${id} hasn't started yet for ${year}-${month + 1}`);
         return;
       }
       
-      // Check if monthly duration has expired
+      // Verificar se a duração mensal expirou
       if (frequency === 'monthly-duration' && monthsDuration && remainingMonths !== undefined) {
         if (remainingMonths <= 0) {
           updateRecurringTransaction(id, { isActive: false });
-          console.log(`🔄 Deactivated recurring transaction ${id} - monthly duration expired`);
+          console.log(`🔄 Deactivated transaction ${id} - monthly duration expired`);
           return;
         }
       }
       
-      // Check if fixed count has expired
+      // Verificar se a contagem fixa expirou
       if (frequency === 'fixed-count' && remainingCount !== undefined && remainingCount <= 0) {
         updateRecurringTransaction(id, { isActive: false });
-        console.log(`🔄 Deactivated recurring transaction ${id} - count expired`);
+        console.log(`🔄 Deactivated transaction ${id} - count expired`);
         return;
       }
       
-      // Check if day exists in the current month
+      // Calcular o dia válido do mês
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const targetDay = Math.min(dayOfMonth, daysInMonth);
       
+      // Verificar se é um mês futuro ou se é o mês atual mas o dia ainda não passou
+      const today = new Date();
+      const targetDayDate = new Date(year, month, targetDay);
+      const isValidForProcessing = targetDayDate >= today || 
+        (year === currentYear && month === currentMonth && targetDay >= today.getDate());
+      
+      if (!isValidForProcessing) {
+        console.log(`⏭️ Skipping past date: ${year}-${month + 1}-${targetDay}`);
+        return;
+      }
+      
       console.log(`💰 Adding recurring ${type}: ${amount} on day ${targetDay} for ${year}-${month + 1}`);
       
-      // Add to the appropriate day - use correct type (entrada/saida)
+      // Adicionar ao dia apropriado
       addToDay(year, month, targetDay, type, amount);
       
-      // Update counts only if we're processing the current month for the first time
-      const currentDate = new Date();
-      const isCurrentOrFutureMonth = year > currentDate.getFullYear() || 
-        (year === currentDate.getFullYear() && month >= currentDate.getMonth());
-      
-      if (isCurrentOrFutureMonth) {
-        if (frequency === 'fixed-count' && remainingCount !== undefined) {
-          const newCount = Math.max(0, remainingCount - 1);
-          const updates: Partial<RecurringTransaction> = { remainingCount: newCount };
-          if (newCount <= 0) {
-            updates.isActive = false;
-          }
-          updateRecurringTransaction(id, updates);
-          console.log(`🔄 Updated remaining count for ${id}: ${newCount}`);
-        } else if (frequency === 'monthly-duration' && remainingMonths !== undefined) {
-          const newMonthsRemaining = Math.max(0, remainingMonths - 1);
-          const updates: Partial<RecurringTransaction> = { remainingMonths: newMonthsRemaining };
-          if (newMonthsRemaining <= 0) {
-            updates.isActive = false;
-          }
-          updateRecurringTransaction(id, updates);
-          console.log(`🔄 Updated remaining months for ${id}: ${newMonthsRemaining}`);
+      // Atualizar contadores apenas se estamos processando o mês atual ou futuro
+      // e apenas uma vez por processamento
+      if (frequency === 'fixed-count' && remainingCount !== undefined) {
+        const newCount = Math.max(0, remainingCount - 1);
+        const updates: Partial<RecurringTransaction> = { remainingCount: newCount };
+        if (newCount <= 0) {
+          updates.isActive = false;
         }
+        updateRecurringTransaction(id, updates);
+        console.log(`🔄 Updated remaining count for ${id}: ${newCount}`);
+      } else if (frequency === 'monthly-duration' && remainingMonths !== undefined) {
+        const newMonthsRemaining = Math.max(0, remainingMonths - 1);
+        const updates: Partial<RecurringTransaction> = { remainingMonths: newMonthsRemaining };
+        if (newMonthsRemaining <= 0) {
+          updates.isActive = false;
+        }
+        updateRecurringTransaction(id, updates);
+        console.log(`🔄 Updated remaining months for ${id}: ${newMonthsRemaining}`);
       }
     });
   }, []);
