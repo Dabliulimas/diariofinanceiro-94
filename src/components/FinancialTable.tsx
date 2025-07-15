@@ -5,6 +5,8 @@ import { FluidNumberInput } from './FluidNumberInput';
 import { FinancialData } from '../hooks/useFinancialData';
 import { formatCurrency } from '../utils/currencyUtils';
 import { TransactionEntry } from '../hooks/useTransactions';
+import { Edit, Trash2 } from 'lucide-react';
+import { Button } from './ui/button';
 
 interface FinancialTableProps {
   selectedYear: number;
@@ -44,7 +46,21 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   const handleDayClick = (day: number) => {
     const date = new Date(selectedYear, selectedMonth, day);
     const dateString = date.toISOString().split('T')[0];
-    navigate(`/quick-entry?date=${dateString}&updateTransaction=${updateTransactionAndSync}&deleteTransaction=${deleteTransactionAndSync}`);
+    navigate(`/quick-entry?date=${dateString}`);
+  };
+
+  // Handle edit transaction
+  const handleEditTransaction = (transaction: TransactionEntry) => {
+    const date = new Date(transaction.date);
+    const dateString = date.toISOString().split('T')[0];
+    navigate(`/quick-entry?date=${dateString}&editId=${transaction.id}`);
+  };
+
+  // Handle delete transaction
+  const handleDeleteTransaction = (transactionId: string) => {
+    if (window.confirm('Deseja realmente excluir este lançamento?')) {
+      deleteTransactionAndSync(transactionId);
+    }
   };
 
   const renderDayRow = (day: number) => {
@@ -57,7 +73,8 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
 
     // Check if there are detailed transactions for this day
     const dateString = new Date(selectedYear, selectedMonth, day).toISOString().split('T')[0];
-    const hasTransactions = getTransactionsByDate(dateString).length > 0;
+    const dayTransactions = getTransactionsByDate(dateString);
+    const hasTransactions = dayTransactions.length > 0;
 
     return (
       <tr key={day} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -73,33 +90,121 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
             {hasTransactions && <span className="text-xs">📝</span>}
           </div>
         </td>
+        
         <td className="py-2 sm:py-3 px-1 sm:px-4">
-          <FluidNumberInput
-            value={inputValues[getInputKey(day, 'entrada')] ?? dayData.entrada}
-            onChange={(value) => onInputChange(day, 'entrada', value)}
-            onBlur={(value) => onInputBlur(day, 'entrada', value)}
-            color="green"
-            className="w-full text-xs sm:text-sm"
-          />
+          <div className="flex items-center gap-1">
+            <FluidNumberInput
+              value={inputValues[getInputKey(day, 'entrada')] ?? dayData.entrada}
+              onChange={(value) => onInputChange(day, 'entrada', value)}
+              onBlur={(value) => onInputBlur(day, 'entrada', value)}
+              color="green"
+              className="w-full text-xs sm:text-sm"
+            />
+            {hasTransactions && (
+              <div className="flex gap-1">
+                {dayTransactions.filter(t => t.type === 'entrada').length > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-green-100"
+                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'entrada')!)}
+                      title="Editar lançamento de entrada"
+                    >
+                      <Edit className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-red-100"
+                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'entrada')!.id)}
+                      title="Excluir lançamento de entrada"
+                    >
+                      <Trash2 className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </td>
+        
         <td className="py-2 sm:py-3 px-1 sm:px-4">
-          <FluidNumberInput
-            value={inputValues[getInputKey(day, 'saida')] ?? dayData.saida}
-            onChange={(value) => onInputChange(day, 'saida', value)}
-            onBlur={(value) => onInputBlur(day, 'saida', value)}
-            color="red"
-            className="w-full text-xs sm:text-sm"
-          />
+          <div className="flex items-center gap-1">
+            <FluidNumberInput
+              value={inputValues[getInputKey(day, 'saida')] ?? dayData.saida}
+              onChange={(value) => onInputChange(day, 'saida', value)}
+              onBlur={(value) => onInputBlur(day, 'saida', value)}
+              color="red"
+              className="w-full text-xs sm:text-sm"
+            />
+            {hasTransactions && (
+              <div className="flex gap-1">
+                {dayTransactions.filter(t => t.type === 'saida').length > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-red-100"
+                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'saida')!)}
+                      title="Editar lançamento de saída"
+                    >
+                      <Edit className="h-3 w-3 text-red-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-red-100"
+                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'saida')!.id)}
+                      title="Excluir lançamento de saída"
+                    >
+                      <Trash2 className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </td>
+        
         <td className="py-2 sm:py-3 px-1 sm:px-4">
-          <FluidNumberInput
-            value={inputValues[getInputKey(day, 'diario')] ?? dayData.diario}
-            onChange={(value) => onInputChange(day, 'diario', value)}
-            onBlur={(value) => onInputBlur(day, 'diario', value)}
-            color="blue"
-            className="w-full text-xs sm:text-sm"
-          />
+          <div className="flex items-center gap-1">
+            <FluidNumberInput
+              value={inputValues[getInputKey(day, 'diario')] ?? dayData.diario}
+              onChange={(value) => onInputChange(day, 'diario', value)}
+              onBlur={(value) => onInputBlur(day, 'diario', value)}
+              color="blue"
+              className="w-full text-xs sm:text-sm"
+            />
+            {hasTransactions && (
+              <div className="flex gap-1">
+                {dayTransactions.filter(t => t.type === 'diario').length > 0 && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-blue-100"
+                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'diario')!)}
+                      title="Editar lançamento diário"
+                    >
+                      <Edit className="h-3 w-3 text-blue-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 hover:bg-red-100"
+                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'diario')!.id)}
+                      title="Excluir lançamento diário"
+                    >
+                      <Trash2 className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </td>
+        
         <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
           <span className={`text-xs sm:text-sm font-medium ${dayData.balance < 0 ? 'text-red-600' : 'text-purple-600'}`}>
             {formatCurrency(dayData.balance)}
@@ -116,7 +221,7 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
           {monthNames[selectedMonth]} {selectedYear}
         </h2>
         <p className="text-sm text-gray-600 mt-1">
-          💡 Clique no número do dia para fazer lançamentos detalhados (📝 indica dias com lançamentos)
+          💡 Clique no número do dia para fazer lançamentos detalhados (📝 indica dias com lançamentos) | ✏️ Editar | 🗑️ Excluir
         </p>
       </div>
       

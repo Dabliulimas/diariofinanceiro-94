@@ -35,7 +35,9 @@ const Index = () => {
     addTransactionAndSync,
     updateTransactionAndSync,
     deleteTransactionAndSync,
-    forceRecalculation
+    forceRecalculation,
+    transactions,
+    rebuildFinancialDataFromTransactions
   } = useSyncedFinancialData();
 
   const {
@@ -69,7 +71,7 @@ const Index = () => {
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions - APENAS UMA VEZ por mês
+  // Process recurring transactions - APENAS UMA VEZ por mês com verificação de duplicatas
   useEffect(() => {
     const monthKey = `${selectedYear}-${selectedMonth}`;
     
@@ -98,18 +100,21 @@ const Index = () => {
         selectedYear,
         selectedMonth,
         addTransactionAndSync,
-        updateRecurringTransaction
+        updateRecurringTransaction,
+        transactions // Pass existing transactions to check for duplicates
       );
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction]);
+  }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction, transactions]);
 
   // Force complete recalculation when recurring transactions change
   useEffect(() => {
-    console.log('🔄 Recurring transactions changed, forcing complete recalculation');
-    forceRecalculation();
-  }, [recurringTransactions, forceRecalculation]);
+    console.log('🔄 Recurring transactions changed, forcing complete rebuild');
+    rebuildFinancialDataFromTransactions();
+    // Clear processed keys to allow reprocessing
+    processedKeysRef.current.clear();
+  }, [recurringTransactions, rebuildFinancialDataFromTransactions]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
@@ -144,37 +149,37 @@ const Index = () => {
     });
   };
 
-  // Enhanced recurring transaction handlers with complete recalculation
+  // Enhanced recurring transaction handlers with complete rebuild
   const handleUpdateRecurringTransaction = (id: string, updates: any) => {
-    console.log('🔄 Updating recurring transaction with complete recalculation');
+    console.log('🔄 Updating recurring transaction with complete rebuild');
     updateRecurringTransaction(id, updates);
     // Clear processed keys to allow reprocessing
     processedKeysRef.current.clear();
-    // Force complete recalculation
+    // Force complete rebuild
     setTimeout(() => {
-      forceRecalculation();
+      rebuildFinancialDataFromTransactions();
     }, 200);
   };
 
   const handleDeleteRecurringTransaction = (id: string) => {
-    console.log('🗑️ Deleting recurring transaction with complete recalculation');
+    console.log('🗑️ Deleting recurring transaction with complete rebuild');
     deleteRecurringTransaction(id);
     // Clear processed keys to allow reprocessing
     processedKeysRef.current.clear();
-    // Force complete recalculation
+    // Force complete rebuild
     setTimeout(() => {
-      forceRecalculation();
+      rebuildFinancialDataFromTransactions();
     }, 200);
   };
 
   const handleAddRecurringTransaction = (transaction: any) => {
-    console.log('➕ Adding recurring transaction with complete recalculation');
+    console.log('➕ Adding recurring transaction with complete rebuild');
     addRecurringTransaction(transaction);
     // Clear processed keys to allow reprocessing
     processedKeysRef.current.clear();
-    // Force complete recalculation
+    // Force complete rebuild
     setTimeout(() => {
-      forceRecalculation();
+      rebuildFinancialDataFromTransactions();
     }, 200);
   };
 

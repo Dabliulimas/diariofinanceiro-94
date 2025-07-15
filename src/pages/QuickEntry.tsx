@@ -18,7 +18,8 @@ const QuickEntry = () => {
     getTransactionsByDate,
     addTransactionAndSync,
     updateTransactionAndSync,
-    deleteTransactionAndSync
+    deleteTransactionAndSync,
+    transactions
   } = useSyncedFinancialData();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -27,20 +28,31 @@ const QuickEntry = () => {
   const [description, setDescription] = useState('');
   const [editingTransaction, setEditingTransaction] = useState<string | null>(null);
 
-  // Initialize date from URL params if provided - FIXED date parsing
+  // Initialize date and editing from URL params
   useEffect(() => {
     const dateParam = searchParams.get('date');
+    const editIdParam = searchParams.get('editId');
+    
     if (dateParam) {
       // Parse date correctly to avoid timezone issues
       const [year, month, day] = dateParam.split('-').map(Number);
-      const correctDate = new Date(year, month - 1, day); // month - 1 because Date uses 0-based months
+      const correctDate = new Date(year, month - 1, day);
       console.log('📅 Setting date from URL param:', dateParam, '→', correctDate);
       setSelectedDate(correctDate);
     }
 
+    // Check if we should edit a specific transaction
+    if (editIdParam) {
+      const transactionToEdit = transactions.find(t => t.id === editIdParam);
+      if (transactionToEdit) {
+        console.log('✏️ Auto-editing transaction:', transactionToEdit);
+        handleEdit(transactionToEdit);
+      }
+    }
+
     // Update document title
     document.title = 'Lançamento Rápido - Diário Financeiro';
-  }, [searchParams]);
+  }, [searchParams, transactions]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +66,7 @@ const QuickEntry = () => {
       return;
     }
 
-    // FIXED: Use correct date formatting to avoid timezone issues
+    // Use correct date formatting to avoid timezone issues
     const dateString = format(selectedDate, 'yyyy-MM-dd');
     const numericAmount = parseFloat(amount.replace(',', '.'));
 
@@ -103,9 +115,9 @@ const QuickEntry = () => {
     
     setEditingTransaction(transaction.id);
     
-    // FIXED: Parse transaction date correctly
+    // Parse transaction date correctly
     const [year, month, day] = transaction.date.split('-').map(Number);
-    const correctDate = new Date(year, month - 1, day); // month - 1 for 0-based months
+    const correctDate = new Date(year, month - 1, day);
     console.log('📅 Edit: Setting date from transaction:', transaction.date, '→', correctDate);
     
     setSelectedDate(correctDate);
@@ -131,7 +143,7 @@ const QuickEntry = () => {
     setDescription('');
   };
 
-  // FIXED: Get transactions using correct date formatting
+  // Get transactions using correct date formatting
   const dateString = format(selectedDate, 'yyyy-MM-dd');
   const todayTransactions = getTransactionsByDate(dateString);
   console.log('📋 Transactions for', dateString, ':', todayTransactions.length, 'transactions found');

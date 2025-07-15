@@ -13,7 +13,8 @@ export const useRecurringProcessor = () => {
       description: string;
       date: string;
     }) => void,
-    updateRecurringTransaction: (id: string, updates: Partial<RecurringTransaction>) => void
+    updateRecurringTransaction: (id: string, updates: Partial<RecurringTransaction>) => void,
+    existingTransactions: any[] = []
   ) => {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
@@ -78,9 +79,22 @@ export const useRecurringProcessor = () => {
       // Formatar data no padrão YYYY-MM-DD
       const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
       
+      // Verificar se já existe um lançamento recorrente para esta data e descrição
+      const existingRecurring = existingTransactions.find(t => 
+        t.date === formattedDate && 
+        t.type === type && 
+        t.description.includes('🔄') && 
+        t.description.includes(description)
+      );
+      
+      if (existingRecurring) {
+        console.log(`⏭️ Recurring transaction already exists for ${formattedDate}: ${description}`);
+        return;
+      }
+      
       console.log(`💰 Adding recurring ${type}: ${amount} on ${formattedDate} - ${description}`);
       
-      // Usar a mesma função que o lançamento rápido usa
+      // Adicionar transação recorrente
       addTransactionAndSync({
         type,
         amount,
