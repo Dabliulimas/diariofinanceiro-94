@@ -57,7 +57,7 @@ const Index = () => {
     getActiveRecurringTransactions
   } = useRecurringTransactions();
 
-  const { processRecurringTransactions } = useRecurringProcessor();
+  const { processRecurringTransactions, removeAllRecurringTransactions } = useRecurringProcessor();
 
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [showReserveModal, setShowReserveModal] = useState(false);
@@ -77,7 +77,7 @@ const Index = () => {
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // OPTIMIZED RECURRING PROCESSING - with enhanced duplicate prevention
+  // IMPROVED RECURRING PROCESSING - Process ALL future months immediately
   useEffect(() => {
     const periodKey = `${selectedYear}-${selectedMonth}`;
     
@@ -87,24 +87,16 @@ const Index = () => {
       return;
     }
     
-    // Multiple validation layers
-    if (processedPeriodsRef.current.has(periodKey)) {
-      console.log(`✅ Period ${periodKey} already processed - SKIP`);
-      return;
-    }
-
     const activeTransactions = getActiveRecurringTransactions();
     if (activeTransactions.length === 0) {
       console.log(`⏭️ No active recurring transactions for ${periodKey}`);
-      processedPeriodsRef.current.add(periodKey);
       return;
     }
 
-    console.log(`🔄 ENHANCED processing for ${periodKey} - ${activeTransactions.length} transactions`);
+    console.log(`🔄 PROCESSING recurring transactions for ALL future months from ${periodKey}`);
     
     // Mark as being processed immediately
     currentPeriodRef.current = periodKey;
-    processedPeriodsRef.current.add(periodKey);
     isProcessingRef.current = true;
     
     // Clear any existing timeout
@@ -112,7 +104,7 @@ const Index = () => {
       clearTimeout(processingTimeoutRef.current);
     }
     
-    // Enhanced timeout with better error handling
+    // Process with timeout for better control
     processingTimeoutRef.current = setTimeout(() => {
       try {
         processRecurringTransactions(
@@ -124,17 +116,15 @@ const Index = () => {
           transactions
         );
         
-        console.log(`✅ ENHANCED processing completed for ${periodKey}`);
+        console.log(`✅ ALL future months processing completed from ${periodKey}`);
       } catch (error) {
-        console.error('❌ Error in enhanced recurring processing:', error);
-        // Remove from processed set on error to allow retry
-        processedPeriodsRef.current.delete(periodKey);
+        console.error('❌ Error in recurring processing:', error);
       } finally {
         isProcessingRef.current = false;
         currentPeriodRef.current = '';
         processingTimeoutRef.current = null;
       }
-    }, 800);
+    }, 500);
 
     // Enhanced cleanup function
     return () => {
@@ -206,21 +196,42 @@ const Index = () => {
     });
   };
 
-  // Enhanced recurring transaction handlers with debounce
+  // Enhanced recurring transaction handlers with complete future processing
   const handleUpdateRecurringTransaction = (id: string, updates: any) => {
-    console.log('🔄 Updating recurring transaction with enhanced control');
-    updateRecurringTransaction(id, updates);
-    processedPeriodsRef.current.clear();
+    console.log('🔄 Updating recurring transaction - will reprocess ALL future months');
     
+    // First remove all existing recurring transactions for this ID
+    const recurringTransactionToUpdate = recurringTransactions.find(t => t.id === id);
+    if (recurringTransactionToUpdate) {
+      removeAllRecurringTransactions(id, deleteTransactionAndSync, transactions);
+    }
+    
+    updateRecurringTransaction(id, updates);
+    
+    // Force reprocessing of all future months
     setTimeout(() => {
+      const activeTransactions = getActiveRecurringTransactions();
+      if (activeTransactions.length > 0) {
+        processRecurringTransactions(
+          activeTransactions,
+          selectedYear,
+          selectedMonth,
+          addTransactionAndSync,
+          updateRecurringTransaction,
+          transactions
+        );
+      }
       rebuildFinancialDataFromTransactions();
-    }, 300);
+    }, 500);
   };
 
   const handleDeleteRecurringTransaction = (id: string) => {
-    console.log('🗑️ Deleting recurring transaction with enhanced control');
+    console.log('🗑️ Deleting recurring transaction - will remove ALL future occurrences');
+    
+    // Remove all existing recurring transactions for this ID
+    removeAllRecurringTransactions(id, deleteTransactionAndSync, transactions);
+    
     deleteRecurringTransaction(id);
-    processedPeriodsRef.current.clear();
     
     setTimeout(() => {
       rebuildFinancialDataFromTransactions();
@@ -228,13 +239,25 @@ const Index = () => {
   };
 
   const handleAddRecurringTransaction = (transaction: any) => {
-    console.log('➕ Adding recurring transaction with enhanced control');
-    addRecurringTransaction(transaction);
-    processedPeriodsRef.current.clear();
+    console.log('➕ Adding recurring transaction - will create ALL future occurrences');
     
+    addRecurringTransaction(transaction);
+    
+    // Process all future months for the new recurring transaction
     setTimeout(() => {
+      const activeTransactions = getActiveRecurringTransactions();
+      if (activeTransactions.length > 0) {
+        processRecurringTransactions(
+          activeTransactions,
+          selectedYear,
+          selectedMonth,
+          addTransactionAndSync,
+          updateRecurringTransaction,
+          transactions
+        );
+      }
       rebuildFinancialDataFromTransactions();
-    }, 300);
+    }, 500);
   };
 
   // Calculate total recurring amount

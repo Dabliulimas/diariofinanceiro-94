@@ -41,25 +41,27 @@ export const useImprovedFinancialSync = () => {
   ): boolean => {
     const newSignature = createTransactionSignature(newTransaction);
     
-    // Method 1: Exact signature match
+    // For recurring transactions, check more strictly
+    if (newTransaction.description.includes('🔄')) {
+      const exactMatch = existingTransactions.some(t => 
+        t.date === newTransaction.date &&
+        t.type === newTransaction.type &&
+        t.description === newTransaction.description &&
+        Math.abs(t.amount - newTransaction.amount) < 0.01
+      );
+      
+      if (exactMatch) {
+        console.log(`🚫 RECURRING DUPLICATE BLOCKED: ${newTransaction.description} on ${newTransaction.date}`);
+        return true;
+      }
+    }
+    
+    // Standard duplicate check
     const exactMatch = existingTransactions.some(t => 
       createTransactionSignature(t) === newSignature
     );
     
-    // Method 2: Similar transaction within same day (for recurring)
-    const sameDay = existingTransactions.filter(t => t.date === newTransaction.date);
-    const similarTransaction = sameDay.some(t => 
-      t.type === newTransaction.type &&
-      Math.abs(t.amount - newTransaction.amount) < 0.01 &&
-      t.description.toLowerCase().includes(newTransaction.description.toLowerCase().substring(2)) // Skip recurring emoji
-    );
-    
-    if (exactMatch || similarTransaction) {
-      console.log(`🚫 DUPLICATE BLOCKED: ${newTransaction.description} on ${newTransaction.date}`);
-      return true;
-    }
-    
-    return false;
+    return exactMatch;
   }, [createTransactionSignature]);
 
   // Optimized rebuild function with incremental updates
@@ -129,7 +131,7 @@ export const useImprovedFinancialSync = () => {
       } finally {
         processingRef.current = false;
       }
-    }, 500); // 500ms debounce
+    }, 300); // Reduced debounce for better responsiveness
   }, [financialData, transactions]);
 
   // Enhanced transaction addition with strict duplicate prevention
