@@ -1,10 +1,10 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
 import { useRecurringTransactions } from '../hooks/useRecurringTransactions';
 import { useRecurringProcessor } from '../hooks/useRecurringProcessor';
+import { useDataCleanup } from '../hooks/useDataCleanup';
 import SummaryCard from '../components/SummaryCard';
 import SmartAlerts from '../components/SmartAlerts';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
@@ -56,15 +56,18 @@ const Index = () => {
   } = useRecurringTransactions();
 
   const { processRecurringTransactions } = useRecurringProcessor();
+  
+  const { clearAllData, clearTransactionsOnly } = useDataCleanup();
 
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
-  // Controle SUPER rigoroso para evitar processamento múltiplo
-  const processedKeysRef = useRef<Set<string>>(new Set());
-  const processingRef = useRef<boolean>(false);
+  // CONTROLE SUPER RIGOROSO: Uma única execução por período
+  const processedPeriodsRef = useRef<Set<string>>(new Set());
+  const isProcessingRef = useRef<boolean>(false);
+  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize month when year/month changes
   useEffect(() => {
@@ -72,36 +75,41 @@ const Index = () => {
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions - COM CONTROLE RIGOROSO
+  // Process recurring transactions - COM CONTROLE ABSOLUTO
   useEffect(() => {
-    const monthKey = `${selectedYear}-${selectedMonth}`;
+    const periodKey = `${selectedYear}-${selectedMonth}`;
     
-    // Verificações múltiplas para evitar processamento duplicado
-    if (processedKeysRef.current.has(monthKey)) {
-      console.log(`⏭️ Month ${monthKey} already processed, skipping`);
+    // Multiple checks to prevent duplicate processing
+    if (processedPeriodsRef.current.has(periodKey)) {
+      console.log(`✅ Period ${periodKey} already processed - SKIPPING`);
       return;
     }
 
-    if (processingRef.current) {
-      console.log(`⏭️ Already processing, skipping ${monthKey}`);
+    if (isProcessingRef.current) {
+      console.log(`⏳ Already processing another period - SKIPPING ${periodKey}`);
       return;
     }
 
     const activeTransactions = getActiveRecurringTransactions();
     if (activeTransactions.length === 0) {
-      console.log(`⏭️ No active recurring transactions for ${monthKey}`);
-      processedKeysRef.current.add(monthKey);
+      console.log(`⏭️ No active recurring transactions for ${periodKey}`);
+      processedPeriodsRef.current.add(periodKey);
       return;
     }
 
-    console.log(`🔄 Processing recurring transactions for ${monthKey} - SINGLE TIME ONLY`);
+    console.log(`🔄 Processing recurring transactions for ${periodKey} - SINGLE EXECUTION GUARANTEED`);
     
-    // Marcar como processado ANTES de processar
-    processedKeysRef.current.add(monthKey);
-    processingRef.current = true;
+    // Mark as processed BEFORE processing to prevent race conditions
+    processedPeriodsRef.current.add(periodKey);
+    isProcessingRef.current = true;
     
-    // Usar timeout maior para garantir estabilidade
-    const timeoutId = setTimeout(() => {
+    // Clear any existing timeout
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+    }
+    
+    // Use longer timeout for stability
+    processingTimeoutRef.current = setTimeout(() => {
       try {
         processRecurringTransactions(
           activeTransactions,
@@ -111,25 +119,40 @@ const Index = () => {
           updateRecurringTransaction,
           transactions
         );
+        
+        console.log(`✅ Recurring transactions processed for ${periodKey}`);
       } catch (error) {
         console.error('❌ Error processing recurring transactions:', error);
+        // Remove from processed set if there was an error
+        processedPeriodsRef.current.delete(periodKey);
       } finally {
-        processingRef.current = false;
+        isProcessingRef.current = false;
+        processingTimeoutRef.current = null;
       }
-    }, 500);
+    }, 800); // Increased timeout for stability
 
+    // Cleanup function
     return () => {
-      clearTimeout(timeoutId);
-      processingRef.current = false;
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+        processingTimeoutRef.current = null;
+      }
+      isProcessingRef.current = false;
     };
   }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction, transactions]);
 
-  // Clear processed keys quando recurring transactions mudam - SEM rebuild automático
+  // Clear processed periods when recurring transactions change significantly
   useEffect(() => {
-    console.log('🔄 Recurring transactions changed, clearing processed keys');
-    processedKeysRef.current.clear();
-    processingRef.current = false;
-  }, [recurringTransactions.length]); // Apenas quando o número de transações muda
+    const activeCount = getActiveRecurringTransactions().length;
+    console.log(`🔄 Active recurring transactions count changed: ${activeCount}`);
+    
+    // Only clear if there's a significant change
+    if (activeCount === 0) {
+      console.log('🧹 No active recurring transactions - clearing processed periods');
+      processedPeriodsRef.current.clear();
+      isProcessingRef.current = false;
+    }
+  }, [getActiveRecurringTransactions().length]);
 
   useEffect(() => {
     document.title = 'Diário Financeiro - Alertas Inteligentes';
@@ -168,7 +191,7 @@ const Index = () => {
   const handleUpdateRecurringTransaction = (id: string, updates: any) => {
     console.log('🔄 Updating recurring transaction');
     updateRecurringTransaction(id, updates);
-    processedKeysRef.current.clear();
+    processedPeriodsRef.current.clear();
     
     setTimeout(() => {
       rebuildFinancialDataFromTransactions();
@@ -178,7 +201,7 @@ const Index = () => {
   const handleDeleteRecurringTransaction = (id: string) => {
     console.log('🗑️ Deleting recurring transaction');
     deleteRecurringTransaction(id);
-    processedKeysRef.current.clear();
+    processedPeriodsRef.current.clear();
     
     setTimeout(() => {
       rebuildFinancialDataFromTransactions();
@@ -188,7 +211,7 @@ const Index = () => {
   const handleAddRecurringTransaction = (transaction: any) => {
     console.log('➕ Adding recurring transaction');
     addRecurringTransaction(transaction);
-    processedKeysRef.current.clear();
+    processedPeriodsRef.current.clear();
     
     setTimeout(() => {
       rebuildFinancialDataFromTransactions();
@@ -203,12 +226,28 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-2 sm:py-4 md:py-8">
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
-        {/* Header */}
+        {/* Header with cleanup buttons */}
         <div className="text-center mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
             Diário Financeiro
           </h1>
           <p className="text-sm sm:text-lg md:text-xl text-gray-600">Alertas Inteligentes</p>
+          
+          {/* Data cleanup controls */}
+          <div className="flex justify-center gap-2 mt-4">
+            <button
+              onClick={clearTransactionsOnly}
+              className="px-3 py-1 bg-yellow-500 text-white rounded text-xs hover:bg-yellow-600"
+            >
+              🧹 Limpar Transações
+            </button>
+            <button
+              onClick={clearAllData}
+              className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
+            >
+              🗑️ Limpar Tudo
+            </button>
+          </div>
         </div>
 
         {/* Year Selector */}

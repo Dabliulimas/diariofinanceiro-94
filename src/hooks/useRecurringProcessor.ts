@@ -3,6 +3,14 @@ import { useCallback } from 'react';
 import { RecurringTransaction } from './useRecurringTransactions';
 
 export const useRecurringProcessor = () => {
+  // Create unique hash for recurring transaction
+  const createRecurringHash = useCallback((
+    transaction: RecurringTransaction,
+    date: string
+  ): string => {
+    return `recurring-${transaction.id}-${date}-${transaction.type}-${transaction.amount}`;
+  }, []);
+
   const processRecurringTransactions = useCallback((
     recurringTransactions: RecurringTransaction[],
     year: number,
@@ -21,7 +29,7 @@ export const useRecurringProcessor = () => {
     const currentMonth = currentDate.getMonth();
     const targetDate = new Date(year, month, 1);
     
-    // Só processa se for mês atual ou futuro
+    // Only process current or future months
     if (targetDate < new Date(currentYear, currentMonth, 1)) {
       console.log(`⏭️ Skipping processing for past month: ${year}-${month + 1}`);
       return;
@@ -34,23 +42,23 @@ export const useRecurringProcessor = () => {
       return;
     }
     
-    console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1}`);
+    console.log(`🔄 Processing ${activeTransactions.length} recurring transactions for ${year}-${month + 1} with STRICT controls`);
     
     activeTransactions.forEach(transaction => {
       const { dayOfMonth, type, amount, frequency, remainingCount, monthsDuration, remainingMonths, startDate, id, description } = transaction;
       
-      // Verificar se a transação deve ser processada para este mês
+      // Check if transaction should be processed for this month
       const startDateObj = new Date(startDate);
       const targetMonthDate = new Date(year, month, 1);
       const startMonthDate = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), 1);
       
-      // Pular se a transação ainda não começou
+      // Skip if transaction hasn't started yet
       if (targetMonthDate < startMonthDate) {
         console.log(`⏭️ Transaction ${id} hasn't started yet for ${year}-${month + 1}`);
         return;
       }
       
-      // Verificar se a duração mensal expirou
+      // Check if monthly duration expired
       if (frequency === 'monthly-duration' && monthsDuration && remainingMonths !== undefined) {
         if (remainingMonths <= 0) {
           updateRecurringTransaction(id, { isActive: false });
@@ -59,40 +67,50 @@ export const useRecurringProcessor = () => {
         }
       }
       
-      // Verificar se a contagem fixa expirou
+      // Check if fixed count expired
       if (frequency === 'fixed-count' && remainingCount !== undefined && remainingCount <= 0) {
         updateRecurringTransaction(id, { isActive: false });
         console.log(`🔄 Deactivated transaction ${id} - count expired`);
         return;
       }
       
-      // Calcular o dia válido do mês
+      // Calculate valid day of month
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const targetDay = Math.min(dayOfMonth, daysInMonth);
       
-      // Formatar data no padrão YYYY-MM-DD
+      // Format date as YYYY-MM-DD
       const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
       
-      // VERIFICAÇÃO CRÍTICA: Evitar duplicatas usando verificação mais rigorosa
+      // CRITICAL VERIFICATION: Strict duplicate check with multiple methods
       const recurringDescription = `🔄 ${description}`;
-      const existingRecurring = existingTransactions.find(t => 
+      const transactionHash = createRecurringHash(transaction, formattedDate);
+      
+      // Method 1: Check by exact match
+      const existingByExactMatch = existingTransactions.find(t => 
         t.date === formattedDate && 
         t.type === type && 
         t.description === recurringDescription &&
-        t.amount === amount
+        Math.abs(t.amount - amount) < 0.01 // Float comparison
       );
       
-      if (existingRecurring) {
-        console.log(`⏭️ Recurring transaction already exists for ${formattedDate}: ${description}`);
+      // Method 2: Check by hash (if we had a hash field)
+      const existingByPattern = existingTransactions.find(t =>
+        t.date === formattedDate &&
+        t.description.includes(`🔄 ${description}`) &&
+        t.type === type
+      );
+      
+      if (existingByExactMatch || existingByPattern) {
+        console.log(`⏭️ STRICT DUPLICATE CHECK - Recurring transaction already exists for ${formattedDate}: ${description}`);
         return;
       }
       
-      // Verificar se é uma data válida para processamento
+      // Check if it's a valid date for processing
       const today = new Date();
       const targetDayDate = new Date(year, month, targetDay);
       
-      // Para meses futuros, sempre processar
-      // Para mês atual, só processar se o dia ainda não passou
+      // For future months, always process
+      // For current month, only process if day hasn't passed
       const isValidForProcessing = year > currentYear || 
         month > currentMonth || 
         (year === currentYear && month === currentMonth && targetDay >= today.getDate());
@@ -102,9 +120,9 @@ export const useRecurringProcessor = () => {
         return;
       }
       
-      console.log(`💰 Adding recurring ${type}: ${amount} on ${formattedDate} - ${description}`);
+      console.log(`💰 Adding CONTROLLED recurring ${type}: ${amount} on ${formattedDate} - ${description}`);
       
-      // Adicionar transação recorrente com verificação adicional
+      // Add recurring transaction with additional verification
       try {
         addTransactionAndSync({
           type,
@@ -113,7 +131,7 @@ export const useRecurringProcessor = () => {
           date: formattedDate
         });
         
-        // Atualizar contadores APENAS após adição bem-sucedida
+        // Update counters ONLY after successful addition
         if (frequency === 'fixed-count' && remainingCount !== undefined) {
           const newCount = Math.max(0, remainingCount - 1);
           const updates: Partial<RecurringTransaction> = { remainingCount: newCount };
@@ -135,7 +153,7 @@ export const useRecurringProcessor = () => {
         console.error(`❌ Error adding recurring transaction ${id}:`, error);
       }
     });
-  }, []);
+  }, [createRecurringHash]);
 
   return { processRecurringTransactions };
 };

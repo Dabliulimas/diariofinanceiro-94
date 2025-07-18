@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
 
@@ -22,40 +21,56 @@ export const useFinancialData = () => {
   const [data, setData] = useState<FinancialData>({});
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  
+  // CONTROLE CRÍTICO: Prevenir loops infinitos
+  const isLoadingRef = useRef<boolean>(false);
+  const isSavingRef = useRef<boolean>(false);
+  const lastSavedDataRef = useRef<string>('');
 
   const { recalculateBalances } = useBalancePropagation();
 
-  // Load data from localStorage on mount
+  // Load data APENAS uma vez no mount
   useEffect(() => {
+    if (isLoadingRef.current) return;
+    
+    isLoadingRef.current = true;
     const savedData = localStorage.getItem('financialData');
+    
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
         console.log('💾 Loading financial data from localStorage');
         setData(parsed || {});
+        lastSavedDataRef.current = savedData;
       } catch (error) {
         console.error('❌ Error loading financial data:', error);
         setData({});
       }
     }
-  }, []);
+    
+    isLoadingRef.current = false;
+  }, []); // APENAS uma vez no mount
 
-  // Save data to localStorage with IMMEDIATE and COMPLETE recalculation
-  useEffect(() => {
-    if (Object.keys(data).length === 0) return;
+  // Save data CONTROLADO para evitar loops
+  const saveDataToStorage = useCallback((dataToSave: FinancialData) => {
+    if (isSavingRef.current) return;
+    if (Object.keys(dataToSave).length === 0) return;
     
-    console.log('💾 Saving financial data with COMPLETE automatic recalculation');
+    const dataString = JSON.stringify(dataToSave);
+    if (dataString === lastSavedDataRef.current) return; // Evita salvar dados idênticos
     
-    // Aplica recálculo completo imediatamente
-    const recalculatedData = recalculateBalances(data);
+    isSavingRef.current = true;
+    console.log('💾 Saving financial data to localStorage');
     
-    // Só atualiza estado se houver mudanças reais
-    if (JSON.stringify(recalculatedData) !== JSON.stringify(data)) {
-      setData(recalculatedData);
+    try {
+      localStorage.setItem('financialData', dataString);
+      lastSavedDataRef.current = dataString;
+    } catch (error) {
+      console.error('❌ Error saving financial data:', error);
+    } finally {
+      isSavingRef.current = false;
     }
-    
-    localStorage.setItem('financialData', JSON.stringify(recalculatedData));
-  }, [data, recalculateBalances]);
+  }, []);
 
   const getDaysInMonth = (year: number, month: number): number => {
     return new Date(year, month + 1, 0).getDate();
@@ -85,9 +100,11 @@ export const useFinancialData = () => {
         }
       }
       
+      // Save after initialization
+      saveDataToStorage(newData);
       return newData;
     });
-  }, []);
+  }, [saveDataToStorage]);
 
   const addToDay = useCallback((year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number): void => {
     console.log(`💰 Adding ${amount} to ${type} on ${year}-${month+1}-${day}`);
@@ -114,16 +131,19 @@ export const useFinancialData = () => {
       
       console.log(`✅ Updated ${type}: ${formatCurrency(currentValue)} + ${formatCurrency(amount)} = ${formatCurrency(newValue)}`);
       
-      return newData;
+      // Recalculate and save
+      const recalculatedData = recalculateBalances(newData, year, month, day);
+      saveDataToStorage(recalculatedData);
+      
+      return recalculatedData;
     });
-  }, []);
+  }, [recalculateBalances, saveDataToStorage]);
 
-  // FUNÇÃO CRÍTICA: updateDayData com recálculo AUTOMÁTICO e IMEDIATO
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
     const numericValue = parseCurrency(value);
     const formattedValue = formatCurrency(numericValue);
     
-    console.log(`📝 Manual update with IMMEDIATE recalculation: ${year}-${month+1}-${day} ${field} = ${formattedValue}`);
+    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue}`);
     
     setData(prevData => {
       const newData = { ...prevData };
@@ -139,26 +159,26 @@ export const useFinancialData = () => {
         };
       }
       
-      // Atualiza o valor
+      // Update value
       newData[year][month][day][field] = formattedValue;
       
-      // RECÁLCULO IMEDIATO E COMPLETO a partir deste ponto
-      console.log(`🔄 Triggering COMPLETE recalculation from ${year}-${month+1}-${day}`);
+      // Recalculate and save
       const recalculatedData = recalculateBalances(newData, year, month, day);
+      saveDataToStorage(recalculatedData);
       
       return recalculatedData;
     });
-  }, [recalculateBalances]);
+  }, [recalculateBalances, saveDataToStorage]);
 
-  // Função principal de recálculo manual (se necessário)
   const triggerCompleteRecalculation = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
     console.log(`🧮 Manual trigger for complete recalculation`);
     
     setData(prevData => {
       const recalculatedData = recalculateBalances(prevData, startYear, startMonth, startDay);
+      saveDataToStorage(recalculatedData);
       return recalculatedData;
     });
-  }, [recalculateBalances]);
+  }, [recalculateBalances, saveDataToStorage]);
 
   const getMonthlyTotals = useCallback((year: number, month: number) => {
     if (!data[year] || !data[year][month]) {
@@ -183,7 +203,7 @@ export const useFinancialData = () => {
       totalEntradas += parseCurrency(dayData.entrada);
       totalSaidas += parseCurrency(dayData.saida);
       totalDiario += parseCurrency(dayData.diario);
-      saldoFinal = dayData.balance; // Last day balance
+      saldoFinal = dayData.balance;
     }
     
     return {
