@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSyncedFinancialData } from '../hooks/useSyncedFinancialData';
+import { useImprovedFinancialSync } from '../hooks/useImprovedFinancialSync';
 import { useReserveAndExpenses } from '../hooks/useReserveAndExpenses';
 import { useRecurringTransactions } from '../hooks/useRecurringTransactions';
 import { useRecurringProcessor } from '../hooks/useRecurringProcessor';
-import { useDataCleanup } from '../hooks/useDataCleanup';
 import SummaryCard from '../components/SummaryCard';
 import SmartAlerts from '../components/SmartAlerts';
 import EmergencyReserveModal from '../components/EmergencyReserveModal';
@@ -12,8 +11,10 @@ import FixedExpensesModal from '../components/FixedExpensesModal';
 import RecurringTransactionsModal from '../components/RecurringTransactionsModal';
 import MonthNavigation from '../components/MonthNavigation';
 import FinancialTable from '../components/FinancialTable';
+import SafeCleanupPanel from '../components/SafeCleanupPanel';
+import DeveloperPanel from '../components/DeveloperPanel';
 import { Button } from '../components/ui/button';
-import { Zap } from 'lucide-react';
+import { Zap, Settings } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -37,8 +38,9 @@ const Index = () => {
     deleteTransactionAndSync,
     forceRecalculation,
     transactions,
-    rebuildFinancialDataFromTransactions
-  } = useSyncedFinancialData();
+    rebuildFinancialDataFromTransactions,
+    cleanup
+  } = useImprovedFinancialSync();
 
   const {
     emergencyReserve,
@@ -56,18 +58,18 @@ const Index = () => {
   } = useRecurringTransactions();
 
   const { processRecurringTransactions } = useRecurringProcessor();
-  
-  const { clearAllData, clearTransactionsOnly } = useDataCleanup();
 
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [showDeveloperPanel, setShowDeveloperPanel] = useState(false);
 
-  // CONTROLE SUPER RIGOROSO: Uma única execução por período
+  // ENHANCED CONTROL: Single execution per period with improved tracking
   const processedPeriodsRef = useRef<Set<string>>(new Set());
   const isProcessingRef = useRef<boolean>(false);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentPeriodRef = useRef<string>('');
 
   // Initialize month when year/month changes
   useEffect(() => {
@@ -75,18 +77,19 @@ const Index = () => {
     setInputValues({});
   }, [selectedYear, selectedMonth, initializeMonth]);
 
-  // Process recurring transactions - COM CONTROLE ABSOLUTO
+  // OPTIMIZED RECURRING PROCESSING - with enhanced duplicate prevention
   useEffect(() => {
     const periodKey = `${selectedYear}-${selectedMonth}`;
     
-    // Multiple checks to prevent duplicate processing
-    if (processedPeriodsRef.current.has(periodKey)) {
-      console.log(`✅ Period ${periodKey} already processed - SKIPPING`);
+    // Skip if same period is already being processed
+    if (currentPeriodRef.current === periodKey && isProcessingRef.current) {
+      console.log(`⏭️ Already processing period ${periodKey} - SKIP`);
       return;
     }
-
-    if (isProcessingRef.current) {
-      console.log(`⏳ Already processing another period - SKIPPING ${periodKey}`);
+    
+    // Multiple validation layers
+    if (processedPeriodsRef.current.has(periodKey)) {
+      console.log(`✅ Period ${periodKey} already processed - SKIP`);
       return;
     }
 
@@ -97,9 +100,10 @@ const Index = () => {
       return;
     }
 
-    console.log(`🔄 Processing recurring transactions for ${periodKey} - SINGLE EXECUTION GUARANTEED`);
+    console.log(`🔄 ENHANCED processing for ${periodKey} - ${activeTransactions.length} transactions`);
     
-    // Mark as processed BEFORE processing to prevent race conditions
+    // Mark as being processed immediately
+    currentPeriodRef.current = periodKey;
     processedPeriodsRef.current.add(periodKey);
     isProcessingRef.current = true;
     
@@ -108,7 +112,7 @@ const Index = () => {
       clearTimeout(processingTimeoutRef.current);
     }
     
-    // Use longer timeout for stability
+    // Enhanced timeout with better error handling
     processingTimeoutRef.current = setTimeout(() => {
       try {
         processRecurringTransactions(
@@ -120,42 +124,57 @@ const Index = () => {
           transactions
         );
         
-        console.log(`✅ Recurring transactions processed for ${periodKey}`);
+        console.log(`✅ ENHANCED processing completed for ${periodKey}`);
       } catch (error) {
-        console.error('❌ Error processing recurring transactions:', error);
-        // Remove from processed set if there was an error
+        console.error('❌ Error in enhanced recurring processing:', error);
+        // Remove from processed set on error to allow retry
         processedPeriodsRef.current.delete(periodKey);
       } finally {
         isProcessingRef.current = false;
+        currentPeriodRef.current = '';
         processingTimeoutRef.current = null;
       }
-    }, 800); // Increased timeout for stability
+    }, 800);
 
-    // Cleanup function
+    // Enhanced cleanup function
     return () => {
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
         processingTimeoutRef.current = null;
       }
-      isProcessingRef.current = false;
+      if (currentPeriodRef.current === periodKey) {
+        isProcessingRef.current = false;
+        currentPeriodRef.current = '';
+      }
     };
   }, [selectedYear, selectedMonth, getActiveRecurringTransactions, processRecurringTransactions, addTransactionAndSync, updateRecurringTransaction, transactions]);
 
-  // Clear processed periods when recurring transactions change significantly
+  // Smart cleanup of processed periods when recurring transactions change significantly
   useEffect(() => {
     const activeCount = getActiveRecurringTransactions().length;
-    console.log(`🔄 Active recurring transactions count changed: ${activeCount}`);
+    console.log(`🔄 Active recurring count: ${activeCount}`);
     
-    // Only clear if there's a significant change
+    // Only clear processed periods in specific scenarios
     if (activeCount === 0) {
       console.log('🧹 No active recurring transactions - clearing processed periods');
       processedPeriodsRef.current.clear();
       isProcessingRef.current = false;
+      currentPeriodRef.current = '';
     }
   }, [getActiveRecurringTransactions().length]);
 
+  // Cleanup on unmount
   useEffect(() => {
-    document.title = 'Diário Financeiro - Alertas Inteligentes';
+    return () => {
+      cleanup();
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+      }
+    };
+  }, [cleanup]);
+
+  useEffect(() => {
+    document.title = 'Diário Financeiro - Sistema Otimizado';
   }, []);
 
   // Calculate totals
@@ -163,7 +182,7 @@ const Index = () => {
   const monthlyTotals = getMonthlyTotals(selectedYear, selectedMonth);
   const daysInMonth = getDaysInMonth(selectedYear, selectedMonth);
 
-  // Generate years array - 50 anos a partir de 2025
+  // Generate years array
   const currentYear = new Date().getFullYear();
   const startYear = Math.max(2025, currentYear);
   const years = Array.from({ length: 50 }, (_, i) => startYear + i);
@@ -187,9 +206,9 @@ const Index = () => {
     });
   };
 
-  // Enhanced recurring transaction handlers
+  // Enhanced recurring transaction handlers with debounce
   const handleUpdateRecurringTransaction = (id: string, updates: any) => {
-    console.log('🔄 Updating recurring transaction');
+    console.log('🔄 Updating recurring transaction with enhanced control');
     updateRecurringTransaction(id, updates);
     processedPeriodsRef.current.clear();
     
@@ -199,7 +218,7 @@ const Index = () => {
   };
 
   const handleDeleteRecurringTransaction = (id: string) => {
-    console.log('🗑️ Deleting recurring transaction');
+    console.log('🗑️ Deleting recurring transaction with enhanced control');
     deleteRecurringTransaction(id);
     processedPeriodsRef.current.clear();
     
@@ -209,7 +228,7 @@ const Index = () => {
   };
 
   const handleAddRecurringTransaction = (transaction: any) => {
-    console.log('➕ Adding recurring transaction');
+    console.log('➕ Adding recurring transaction with enhanced control');
     addRecurringTransaction(transaction);
     processedPeriodsRef.current.clear();
     
@@ -224,31 +243,35 @@ const Index = () => {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-2 sm:py-4 md:py-8">
+    <div className="min-h-screen bg-gray-50 py-2 sm:py-4 md:py-8 pb-20">
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
-        {/* Header with cleanup buttons */}
+        {/* Header */}
         <div className="text-center mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
             Diário Financeiro
           </h1>
-          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Alertas Inteligentes</p>
+          <p className="text-sm sm:text-lg md:text-xl text-gray-600">Sistema Otimizado</p>
           
-          {/* Data cleanup controls */}
-          <div className="flex justify-center gap-2 mt-4">
-            <button
-              onClick={clearTransactionsOnly}
-              className="px-3 py-1 bg-yellow-500 text-white rounded text-xs hover:bg-yellow-600"
+          {/* Developer tools toggle */}
+          <div className="flex justify-center gap-2 mt-2">
+            <Button
+              onClick={() => setShowDeveloperPanel(!showDeveloperPanel)}
+              variant="outline"
+              size="sm"
+              className="text-xs"
             >
-              🧹 Limpar Transações
-            </button>
-            <button
-              onClick={clearAllData}
-              className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
-            >
-              🗑️ Limpar Tudo
-            </button>
+              <Settings className="h-3 w-3 mr-1" />
+              {showDeveloperPanel ? 'Ocultar' : 'Mostrar'} Dev Tools
+            </Button>
           </div>
         </div>
+
+        {/* Developer Panel */}
+        {showDeveloperPanel && (
+          <div className="mb-6">
+            <DeveloperPanel />
+          </div>
+        )}
 
         {/* Year Selector */}
         <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:justify-center sm:items-center sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
@@ -429,6 +452,9 @@ const Index = () => {
           onDelete={handleDeleteRecurringTransaction}
           currentTransactions={recurringTransactions}
         />
+
+        {/* Safe Cleanup Panel */}
+        <SafeCleanupPanel />
       </div>
     </div>
   );
