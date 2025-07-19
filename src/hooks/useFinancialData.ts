@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
@@ -30,7 +29,7 @@ export const useFinancialData = () => {
   const lastSavedDataRef = useRef<string>('');
   const initializationRef = useRef<Set<string>>(new Set());
 
-  const { recalculateBalances, getDaysInMonth } = useBalancePropagation();
+  const { recalculateBalances, getDaysInMonth, getLastDecemberBalance } = useBalancePropagation();
 
   // Load data APENAS uma vez no mount - SEM LOOPS
   useEffect(() => {
@@ -76,6 +75,33 @@ export const useFinancialData = () => {
     }
   }, []);
 
+  // Função para obter saldo inicial correto para um mês
+  const getInitialBalanceForMonth = useCallback((currentData: FinancialData, year: number, month: number): number => {
+    if (month === 0) {
+      // Janeiro - herda de dezembro do ano anterior
+      const previousYearBalance = getLastDecemberBalance(currentData, year - 1);
+      console.log(`🎯 Initial balance for Jan ${year}: ${previousYearBalance} (from Dec ${year - 1})`);
+      return previousYearBalance;
+    } else {
+      // Outros meses - herdam do último dia do mês anterior
+      const prevMonth = month - 1;
+      const daysInPrevMonth = getDaysInMonth(year, prevMonth);
+      
+      if (currentData[year] && currentData[year][prevMonth]) {
+        for (let day = daysInPrevMonth; day >= 1; day--) {
+          if (currentData[year][prevMonth][day] && typeof currentData[year][prevMonth][day].balance === 'number') {
+            const balance = currentData[year][prevMonth][day].balance;
+            console.log(`🎯 Initial balance for ${month + 1}/${year}: ${balance} (from ${prevMonth + 1}/${day}/${year})`);
+            return balance;
+          }
+        }
+      }
+      
+      console.log(`🎯 No previous balance found for ${month + 1}/${year}, using 0`);
+      return 0;
+    }
+  }, [getLastDecemberBalance, getDaysInMonth]);
+
   // Inicialização CONTROLADA de mês sem loops
   const initializeMonth = useCallback((year: number, month: number): void => {
     const monthKey = `${year}-${month}`;
@@ -98,14 +124,25 @@ export const useFinancialData = () => {
         newData[year][month] = {};
         const daysInMonth = getDaysInMonth(year, month);
         
-        // Inicializar todos os dias do mês com valores zerados
+        // Obter saldo inicial correto para este mês
+        const initialBalance = getInitialBalanceForMonth(newData, year, month);
+        
+        // Inicializar todos os dias do mês
         for (let day = 1; day <= daysInMonth; day++) {
           newData[year][month][day] = {
             entrada: "R$ 0,00",
             saida: "R$ 0,00",
             diario: "R$ 0,00",
-            balance: 0
+            balance: day === 1 ? initialBalance : 0 // Apenas o primeiro dia herda o saldo inicial
           };
+        }
+        
+        // Se não é o primeiro dia do mês, recalcular saldos
+        if (initialBalance !== 0) {
+          console.log(`🧮 Recalculating balances for ${month + 1}/${year} with initial balance ${initialBalance}`);
+          // Aplicar recálculo apenas para este mês
+          const recalculatedData = recalculateBalances(newData, year, month, 1);
+          Object.assign(newData, recalculatedData);
         }
         
         // Marcar como inicializado
@@ -117,7 +154,7 @@ export const useFinancialData = () => {
       
       return newData;
     });
-  }, [saveDataToStorage, getDaysInMonth]);
+  }, [saveDataToStorage, getDaysInMonth, getInitialBalanceForMonth, recalculateBalances]);
 
   // Adicionar valor a um dia específico (sem recálculo automático)
   const addToDay = useCallback((year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number): void => {

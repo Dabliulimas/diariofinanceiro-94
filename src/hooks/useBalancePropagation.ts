@@ -18,7 +18,7 @@ export const useBalancePropagation = () => {
     return daysPerMonth[month];
   }, [isLeapYear]);
 
-  // Função para obter o saldo do último dia disponível de dezembro do ano anterior
+  // Função para obter o último saldo válido de dezembro
   const getLastDecemberBalance = useCallback((data: FinancialData, year: number): number => {
     console.log(`🔍 Getting last December balance for year ${year}`);
     
@@ -40,6 +40,31 @@ export const useBalancePropagation = () => {
     return 0;
   }, []);
 
+  // Função para obter o último saldo válido do mês anterior
+  const getLastMonthBalance = useCallback((data: FinancialData, year: number, month: number): number => {
+    const prevMonth = month - 1;
+    const daysInPrevMonth = getDaysInMonth(year, prevMonth);
+    
+    console.log(`🔍 Getting last balance from month ${prevMonth + 1}/${year}`);
+    
+    if (!data[year] || !data[year][prevMonth]) {
+      console.log(`❌ No data found for month ${prevMonth + 1}/${year}, returning 0`);
+      return 0;
+    }
+    
+    // Procura o último dia disponível do mês anterior
+    for (let day = daysInPrevMonth; day >= 1; day--) {
+      if (data[year][prevMonth][day] && typeof data[year][prevMonth][day].balance === 'number') {
+        const balance = data[year][prevMonth][day].balance;
+        console.log(`✅ Found ${prevMonth + 1}/${day}/${year} balance: ${balance}`);
+        return balance;
+      }
+    }
+    
+    console.log(`❌ No valid balance found for month ${prevMonth + 1}/${year}, returning 0`);
+    return 0;
+  }, [getDaysInMonth]);
+
   // Função para obter saldo anterior CORRETO seguindo as regras da especificação
   const getPreviousBalance = useCallback((data: FinancialData, year: number, month: number, day: number): number => {
     if (day === 1) {
@@ -50,19 +75,9 @@ export const useBalancePropagation = () => {
         return previousYearBalance;
       } else {
         // 1º do mês (não Janeiro) - herdar saldo do último dia do mês anterior
-        const prevMonth = month - 1;
-        const daysInPrevMonth = getDaysInMonth(year, prevMonth);
-        
-        for (let d = daysInPrevMonth; d >= 1; d--) {
-          if (data[year] && data[year][prevMonth] && data[year][prevMonth][d] && 
-              typeof data[year][prevMonth][d].balance === 'number') {
-            const balance = data[year][prevMonth][d].balance;
-            console.log(`🎯 ${month + 1}/1/${year}: inheriting from ${prevMonth + 1}/${d}/${year} = ${balance}`);
-            return balance;
-          }
-        }
-        console.log(`❌ No previous month balance found for ${month + 1}/1/${year}, returning 0`);
-        return 0;
+        const prevMonthBalance = getLastMonthBalance(data, year, month);
+        console.log(`🎯 ${month + 1}/1/${year}: inheriting from previous month = ${prevMonthBalance}`);
+        return prevMonthBalance;
       }
     } else {
       // Dia normal - herdar do dia anterior no mesmo mês
@@ -75,7 +90,7 @@ export const useBalancePropagation = () => {
       console.log(`❌ No previous day balance found for ${month + 1}/${day}/${year}, returning 0`);
       return 0;
     }
-  }, [getLastDecemberBalance, getDaysInMonth]);
+  }, [getLastDecemberBalance, getLastMonthBalance]);
 
   // Função de recálculo em cascata CORRETA seguindo a especificação
   const recalculateBalances = useCallback((
@@ -98,16 +113,20 @@ export const useBalancePropagation = () => {
     
     console.log(`🔄 Recalculating from ${firstYear}-${firstMonth + 1}-${firstDay}`);
     
-    // ITERAÇÃO CRONOLÓGICA SEQUENCIAL conforme especificação
+    // ITERAÇÃO CRONOLÓGICA SEQUENCIAL incluindo TODOS os anos
     for (const year of years.filter(y => y >= firstYear)) {
       const startMonthForYear = (year === firstYear) ? firstMonth : 0;
       const endMonthForYear = 11; // Dezembro
+      
+      console.log(`📅 Processing year ${year} from month ${startMonthForYear + 1} to 12`);
       
       for (let month = startMonthForYear; month <= endMonthForYear; month++) {
         if (!newData[year] || !newData[year][month]) continue;
         
         const startDayForMonth = (year === firstYear && month === firstMonth) ? firstDay : 1;
         const endDayForMonth = getDaysInMonth(year, month);
+        
+        console.log(`📅 Processing ${year}-${month + 1} from day ${startDayForMonth} to ${endDayForMonth}`);
         
         // Recalcula todos os dias do mês em ordem cronológica
         for (let day = startDayForMonth; day <= endDayForMonth; day++) {
