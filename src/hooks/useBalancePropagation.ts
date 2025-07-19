@@ -36,7 +36,9 @@ export const useBalancePropagation = () => {
     
     // Procurar o último dia válido de dezembro (31, 30, 29...)
     const decemberData = data[year][11];
-    for (let day = 31; day >= 1; day--) {
+    const daysInDecember = getDaysInMonth(year, 11);
+    
+    for (let day = daysInDecember; day >= 1; day--) {
       if (decemberData[day] && typeof decemberData[day].balance === 'number') {
         const balance = decemberData[day].balance;
         console.log(`✅ Found December ${day}, ${year} balance: ${balance}`);
@@ -46,7 +48,7 @@ export const useBalancePropagation = () => {
     
     console.log(`❌ No valid December balance found for year ${year}, returning 0`);
     return 0;
-  }, []);
+  }, [getDaysInMonth]);
 
   // Função CORRIGIDA para obter o saldo inicial correto para qualquer mês
   const getInitialBalanceForMonth = useCallback((data: FinancialData, year: number, month: number): number => {
@@ -76,7 +78,7 @@ export const useBalancePropagation = () => {
     }
   }, [getLastDecemberBalance, getDaysInMonth]);
 
-  // Função CORRIGIDA de recálculo em cascata com propagação entre anos
+  // Função CORRIGIDA de recálculo em cascata com propagação FORÇADA entre anos
   const recalculateBalances = useCallback((
     data: FinancialData,
     startYear?: number,
@@ -118,12 +120,12 @@ export const useBalancePropagation = () => {
           
           const dayData = newData[year][month][day];
           
-          // Parse dos valores do dia atual - CORRIGIDO para tratar valores vazios
+          // Parse dos valores do dia atual
           const entrada = dayData.entrada ? parseCurrency(dayData.entrada) : 0;
           const saida = dayData.saida ? parseCurrency(dayData.saida) : 0;
           const diario = dayData.diario ? parseCurrency(dayData.diario) : 0;
           
-          // Obter saldo anterior CORRETO seguindo as regras da especificação
+          // Obter saldo anterior CORRETO
           let previousBalance = 0;
           
           if (day === 1) {
@@ -136,19 +138,47 @@ export const useBalancePropagation = () => {
             }
           }
           
-          // FÓRMULA FUNDAMENTAL da especificação:
-          // Saldo Atual = Saldo Anterior + Entrada - Saída - Diário
+          // FÓRMULA FUNDAMENTAL: Saldo Atual = Saldo Anterior + Entrada - Saída - Diário
           const newBalance = previousBalance + entrada - saida - diario;
           
           // Atualizar o saldo calculado
           dayData.balance = newBalance;
           
           console.log(`💰 ${year}-${month+1}-${day}: ${previousBalance} + ${entrada} - ${saida} - ${diario} = ${newBalance}`);
+          
+          // PROPAGAÇÃO FORÇADA: Se é 31 de dezembro, forçar criação de janeiro do próximo ano
+          if (month === 11 && day === 31) {
+            const nextYear = year + 1;
+            console.log(`🔄 Year-end transfer: ${newBalance} from Dec ${year} to Jan ${nextYear}`);
+            
+            // Criar próximo ano se não existir
+            if (!newData[nextYear]) {
+              newData[nextYear] = {};
+            }
+            if (!newData[nextYear][0]) {
+              newData[nextYear][0] = {};
+              // Inicializar todos os dias de janeiro do próximo ano
+              for (let janDay = 1; janDay <= getDaysInMonth(nextYear, 0); janDay++) {
+                newData[nextYear][0][janDay] = {
+                  entrada: "R$ 0,00",
+                  saida: "R$ 0,00",
+                  diario: "R$ 0,00",
+                  balance: janDay === 1 ? newBalance : 0
+                };
+              }
+            }
+            
+            // Garantir que 1º de janeiro do próximo ano tenha o saldo correto
+            if (newData[nextYear][0][1]) {
+              newData[nextYear][0][1].balance = newBalance;
+              console.log(`✅ Forced Jan 1, ${nextYear} balance to: ${newBalance}`);
+            }
+          }
         }
       }
     }
     
-    console.log('✅ CASCADE recalculation completed with year-end propagation');
+    console.log('✅ CASCADE recalculation completed with FORCED year-end propagation');
     return newData;
   }, [getDaysInMonth, getInitialBalanceForMonth]);
 

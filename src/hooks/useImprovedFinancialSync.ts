@@ -56,7 +56,7 @@ export const useImprovedFinancialSync = () => {
     };
   }, [transactions.transactions]);
 
-  // Rebuild OTIMIZADO seguindo a lógica financeira correta
+  // Rebuild OTIMIZADO com limpeza completa antes de reconstruir
   const rebuildFinancialDataFromTransactions = useCallback((): void => {
     if (processingRef.current) {
       console.log('⏭️ Rebuild already in progress, skipping');
@@ -71,7 +71,7 @@ export const useImprovedFinancialSync = () => {
     // Debounce the rebuild
     debounceTimeoutRef.current = setTimeout(() => {
       processingRef.current = true;
-      console.log('🔄 Starting CONTROLLED financial data rebuild following specification');
+      console.log('🔄 Starting CONTROLLED financial data rebuild with COMPLETE cleanup');
       
       try {
         const allTransactions = transactions.transactions;
@@ -84,12 +84,13 @@ export const useImprovedFinancialSync = () => {
           return;
         }
         
-        console.log(`📊 Processing ${allTransactions.length} transactions for CORRECT rebuild`);
+        console.log(`📊 Processing ${allTransactions.length} transactions for COMPLETE rebuild`);
         
-        // PRIMEIRO: Limpar todos os valores existentes para R$ 0,00
+        // PRIMEIRO: Limpar COMPLETAMENTE todos os valores existentes
         const currentData = financialData.data;
         const years = Object.keys(currentData).map(Number).sort();
         
+        // Limpar todos os valores para R$ 0,00 e balance para 0
         for (const year of years) {
           for (let month = 0; month < 12; month++) {
             if (currentData[year] && currentData[year][month]) {
@@ -97,10 +98,14 @@ export const useImprovedFinancialSync = () => {
               const days = Object.keys(monthData).map(Number).sort();
               
               for (const day of days) {
-                // Resetar valores para zero, mantendo estrutura
+                // Resetar COMPLETAMENTE todos os valores
                 financialData.updateDayData(year, month, day, 'entrada', 'R$ 0,00');
                 financialData.updateDayData(year, month, day, 'saida', 'R$ 0,00');
                 financialData.updateDayData(year, month, day, 'diario', 'R$ 0,00');
+                // Resetar balance diretamente
+                if (currentData[year][month][day]) {
+                  currentData[year][month][day].balance = 0;
+                }
               }
             }
           }
@@ -138,7 +143,7 @@ export const useImprovedFinancialSync = () => {
           
           financialData.initializeMonth(year, month - 1);
           
-          // Update values efficiently following specification format
+          // Update values efficiently
           if (values.entrada > 0) {
             const formattedValue = `R$ ${values.entrada.toFixed(2).replace('.', ',')}`;
             financialData.updateDayData(year, month - 1, day, 'entrada', formattedValue);
@@ -153,30 +158,24 @@ export const useImprovedFinancialSync = () => {
           }
         });
         
-        // QUARTO: Trigger CASCADE recalculation from earliest change
-        if (earliestYear && earliestMonth !== undefined && earliestDay) {
-          console.log(`🧮 Triggering CASCADE recalculation from ${earliestYear}-${earliestMonth + 1}-${earliestDay}`);
-          financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
-        } else {
-          // Se não há transações, recalcular tudo do início
-          console.log('🧮 No transactions found, triggering full recalculation');
-          financialData.recalculateBalances();
-        }
+        // QUARTO: Trigger CASCADE recalculation from the very beginning
+        console.log('🧮 Triggering COMPLETE CASCADE recalculation from the beginning');
+        financialData.recalculateBalances();
         
         lastProcessedHashRef.current = transactionsHash;
-        console.log('✅ CONTROLLED financial data rebuild completed with proper cleanup');
+        console.log('✅ COMPLETE financial data rebuild completed');
         
       } catch (error) {
         console.error('❌ Error in controlled rebuild:', error);
       } finally {
         processingRef.current = false;
       }
-    }, 300); // Reduced debounce for faster response
+    }, 300);
   }, [financialData, transactions]);
 
   // Add transaction with STRICT duplicate control
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction with STRICT control following specification:', transaction);
+    console.log('🔄 Adding transaction with STRICT control:', transaction);
     
     // Strict duplicate check
     if (isDuplicateTransaction(transaction, transactions.transactions)) {
@@ -188,15 +187,15 @@ export const useImprovedFinancialSync = () => {
       // Add transaction
       transactions.addTransaction(transaction);
       
-      // Apply to financial data immediately following specification
+      // Apply to financial data immediately
       const [year, month, day] = transaction.date.split('-').map(Number);
       financialData.initializeMonth(year, month - 1);
       financialData.addToDay(year, month - 1, day, transaction.type, transaction.amount);
       
-      // Trigger CASCADE recalculation from this point following specification
+      // Trigger CASCADE recalculation from this point
       financialData.recalculateBalances(year, month - 1, day);
       
-      console.log('✅ Transaction added with CASCADE recalculation following specification');
+      console.log('✅ Transaction added with CASCADE recalculation');
       
     } catch (error) {
       console.error('❌ Error adding transaction:', error);
@@ -205,44 +204,33 @@ export const useImprovedFinancialSync = () => {
 
   // Update with controlled rebuild
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('✏️ Updating transaction with controlled rebuild following specification:', id);
+    console.log('✏️ Updating transaction with controlled rebuild:', id);
     
     transactions.updateTransaction(id, updates);
     rebuildFinancialDataFromTransactions();
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
-  // Delete with validation and controlled rebuild
+  // Delete CORRIGIDO - sem loops ou multiplicação
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🗑️ Deleting transaction with controlled rebuild following specification:', id);
+    console.log('🗑️ Deleting transaction with controlled rebuild:', id);
     
     // Encontrar a transação para validar múltiplos lançamentos
     const transactionToDelete = transactions.transactions.find(t => t.id === id);
     if (!transactionToDelete) {
-      console.log('❌ Transaction not found for deletion');
+      console.log('❌ Transaction not found for deletion:', id);
       return;
     }
     
-    // Contar transações na mesma data
-    const transactionsCount = countTransactionsForDate(transactionToDelete.date);
-    
-    // Se há múltiplas transações na mesma data, avisar o usuário
-    if (transactionsCount.total > 1) {
-      const confirmMessage = `⚠️ ATENÇÃO: Há ${transactionsCount.total} lançamentos em ${transactionToDelete.date}:\n` +
-        `• Entradas: ${transactionsCount.entrada}\n` +
-        `• Saídas: ${transactionsCount.saida}\n` +
-        `• Diário: ${transactionsCount.diario}\n\n` +
-        `Você está deletando: ${transactionToDelete.type} - ${transactionToDelete.description} - R$ ${transactionToDelete.amount.toFixed(2).replace('.', ',')}\n\n` +
-        `Deseja realmente continuar? Os outros lançamentos desta data não serão afetados.`;
-      
-      if (!confirm(confirmMessage)) {
-        console.log('🚫 Deletion cancelled by user');
-        return;
-      }
-    }
-    
+    // Deletar APENAS UMA VEZ - sem loops
     transactions.deleteTransaction(id);
-    rebuildFinancialDataFromTransactions();
-  }, [transactions, rebuildFinancialDataFromTransactions, countTransactionsForDate]);
+    
+    // Rebuild completo APENAS UMA VEZ
+    setTimeout(() => {
+      rebuildFinancialDataFromTransactions();
+    }, 100);
+    
+    console.log('✅ Transaction deleted and rebuild scheduled');
+  }, [transactions, rebuildFinancialDataFromTransactions]);
 
   // Cleanup function
   const cleanup = useCallback(() => {

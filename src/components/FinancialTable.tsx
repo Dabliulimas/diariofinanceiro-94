@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FluidNumberInput } from './FluidNumberInput';
@@ -60,19 +59,36 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
     navigate(`/quick-entry?date=${dateString}&editId=${transaction.id}`);
   };
 
-  // Handle delete transaction with confirmation
+  // Handle delete transaction with improved confirmation
   const handleDeleteTransaction = (transaction: TransactionEntry) => {
+    console.log('🗑️ Preparing to delete transaction:', transaction.id);
+    
     const dateTransactions = getTransactionsByDate(transaction.date);
     
     if (dateTransactions.length > 1) {
-      // Múltiplas transações - mostrar confirmação
+      // Múltiplas transações - mostrar confirmação melhorada
+      console.log(`⚠️ Multiple transactions found for ${transaction.date}: ${dateTransactions.length}`);
       setTransactionToDelete(transaction);
       setAllTransactionsForDate(dateTransactions);
       setShowDeleteConfirmation(true);
     } else {
       // Única transação - confirmar simples
-      if (window.confirm(`Deseja realmente excluir este lançamento?\n\n${transaction.description}\nR$ ${transaction.amount.toFixed(2).replace('.', ',')}`)) {
+      const isRecurring = transaction.description.toUpperCase().includes('RECORRENTE') || 
+                         transaction.description.toUpperCase().includes('MENSAL') ||
+                         transaction.description.toUpperCase().includes('AUTOMÁTICO');
+      
+      const recurringText = isRecurring ? '\n🔄 TRANSAÇÃO RECORRENTE' : '';
+      
+      const confirmMessage = `Deseja realmente excluir este lançamento?${recurringText}\n\n` +
+        `📝 ${transaction.description}\n` +
+        `💰 ${formatCurrency(transaction.amount)}\n` +
+        `📅 ${new Date(transaction.date).toLocaleDateString('pt-BR')}`;
+      
+      if (window.confirm(confirmMessage)) {
+        console.log('✅ Single transaction deletion confirmed');
         deleteTransactionAndSync(transaction.id);
+      } else {
+        console.log('❌ Single transaction deletion cancelled');
       }
     }
   };
@@ -80,6 +96,7 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   // Confirm deletion
   const handleConfirmDeletion = () => {
     if (transactionToDelete) {
+      console.log('✅ Multiple transaction deletion confirmed for:', transactionToDelete.id);
       deleteTransactionAndSync(transactionToDelete.id);
       setShowDeleteConfirmation(false);
       setTransactionToDelete(null);
@@ -89,6 +106,7 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
 
   // Cancel deletion
   const handleCancelDeletion = () => {
+    console.log('❌ Multiple transaction deletion cancelled');
     setShowDeleteConfirmation(false);
     setTransactionToDelete(null);
     setAllTransactionsForDate([]);
@@ -288,7 +306,166 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {Array.from({ length: daysInMonth }, (_, i) => renderDayRow(i + 1))}
+              {Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1;
+                const dayData = data[selectedYear]?.[selectedMonth]?.[day] || {
+                  entrada: "R$ 0,00",
+                  saida: "R$ 0,00",
+                  diario: "R$ 0,00",
+                  balance: 0
+                };
+
+                // Check if there are detailed transactions for this day
+                const dateString = new Date(selectedYear, selectedMonth, day).toISOString().split('T')[0];
+                const dayTransactions = getTransactionsByDate(dateString);
+                const hasTransactions = dayTransactions.length > 0;
+
+                return (
+                  <tr key={day} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td 
+                      className={`py-2 sm:py-3 px-2 sm:px-4 text-center font-medium text-sm sm:text-base cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors ${
+                        hasTransactions ? 'text-blue-600 bg-blue-50' : 'text-gray-700'
+                      }`}
+                      onClick={() => handleDayClick(day)}
+                      title="Clique para lançamentos detalhados"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        {day}
+                        {hasTransactions && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs">📝</span>
+                            {dayTransactions.length > 1 && (
+                              <span className="text-xs bg-blue-100 text-blue-600 px-1 rounded">
+                                {dayTransactions.length}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="py-2 sm:py-3 px-1 sm:px-4">
+                      <div className="flex items-center gap-1">
+                        <FluidNumberInput
+                          value={inputValues[getInputKey(day, 'entrada')] ?? dayData.entrada}
+                          onChange={(value) => onInputChange(day, 'entrada', value)}
+                          onBlur={(value) => onInputBlur(day, 'entrada', value)}
+                          color="green"
+                          className="w-full text-xs sm:text-sm"
+                        />
+                        {hasTransactions && (
+                          <div className="flex gap-1">
+                            {dayTransactions.filter(t => t.type === 'entrada').map(transaction => (
+                              <div key={transaction.id} className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-green-100"
+                                  onClick={() => handleEditTransaction(transaction)}
+                                  title="Editar lançamento de entrada"
+                                >
+                                  <Edit className="h-3 w-3 text-green-600" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-red-100"
+                                  onClick={() => handleDeleteTransaction(transaction)}
+                                  title="Excluir lançamento de entrada"
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-600" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="py-2 sm:py-3 px-1 sm:px-4">
+                      <div className="flex items-center gap-1">
+                        <FluidNumberInput
+                          value={inputValues[getInputKey(day, 'saida')] ?? dayData.saida}
+                          onChange={(value) => onInputChange(day, 'saida', value)}
+                          onBlur={(value) => onInputBlur(day, 'saida', value)}
+                          color="red"
+                          className="w-full text-xs sm:text-sm"
+                        />
+                        {hasTransactions && (
+                          <div className="flex gap-1">
+                            {dayTransactions.filter(t => t.type === 'saida').map(transaction => (
+                              <div key={transaction.id} className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-red-100"
+                                  onClick={() => handleEditTransaction(transaction)}
+                                  title="Editar lançamento de saída"
+                                >
+                                  <Edit className="h-3 w-3 text-red-600" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-red-100"
+                                  onClick={() => handleDeleteTransaction(transaction)}
+                                  title="Excluir lançamento de saída"
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-600" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="py-2 sm:py-3 px-1 sm:px-4">
+                      <div className="flex items-center gap-1">
+                        <FluidNumberInput
+                          value={inputValues[getInputKey(day, 'diario')] ?? dayData.diario}
+                          onChange={(value) => onInputChange(day, 'diario', value)}
+                          onBlur={(value) => onInputBlur(day, 'diario', value)}
+                          color="blue"
+                          className="w-full text-xs sm:text-sm"
+                        />
+                        {hasTransactions && (
+                          <div className="flex gap-1">
+                            {dayTransactions.filter(t => t.type === 'diario').map(transaction => (
+                              <div key={transaction.id} className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-blue-100"
+                                  onClick={() => handleEditTransaction(transaction)}
+                                  title="Editar lançamento diário"
+                                >
+                                  <Edit className="h-3 w-3 text-blue-600" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-red-100"
+                                  onClick={() => handleDeleteTransaction(transaction)}
+                                  title="Excluir lançamento diário"
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-600" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    
+                    <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
+                      <span className={`text-xs sm:text-sm font-medium ${dayData.balance < 0 ? 'text-red-600' : 'text-purple-600'}`}>
+                        {formatCurrency(dayData.balance)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
