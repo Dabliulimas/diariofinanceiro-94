@@ -26,6 +26,7 @@ export const useFinancialData = () => {
   const isLoadingRef = useRef<boolean>(false);
   const isSavingRef = useRef<boolean>(false);
   const lastSavedDataRef = useRef<string>('');
+  const initializationRef = useRef<Set<string>>(new Set());
 
   const { recalculateBalances } = useBalancePropagation();
 
@@ -49,22 +50,22 @@ export const useFinancialData = () => {
     }
     
     isLoadingRef.current = false;
-  }, []); // APENAS uma vez no mount
+  }, []);
 
-  // Save data CONTROLADO para evitar loops
+  // Save data CONTROLADO
   const saveDataToStorage = useCallback((dataToSave: FinancialData) => {
     if (isSavingRef.current) return;
     if (Object.keys(dataToSave).length === 0) return;
     
     const dataString = JSON.stringify(dataToSave);
-    if (dataString === lastSavedDataRef.current) return; // Evita salvar dados idênticos
+    if (dataString === lastSavedDataRef.current) return;
     
     isSavingRef.current = true;
-    console.log('💾 Saving financial data to localStorage');
     
     try {
       localStorage.setItem('financialData', dataString);
       lastSavedDataRef.current = dataString;
+      console.log('💾 Data saved to localStorage');
     } catch (error) {
       console.error('❌ Error saving financial data:', error);
     } finally {
@@ -76,7 +77,15 @@ export const useFinancialData = () => {
     return new Date(year, month + 1, 0).getDate();
   };
 
+  // Inicialização CONTROLADA sem loops
   const initializeMonth = useCallback((year: number, month: number): void => {
+    const monthKey = `${year}-${month}`;
+    
+    // Evita inicialização múltipla
+    if (initializationRef.current.has(monthKey)) {
+      return;
+    }
+    
     console.log(`🏗️ Initializing month ${month + 1}/${year}`);
     
     setData(prevData => {
@@ -98,14 +107,19 @@ export const useFinancialData = () => {
             balance: 0
           };
         }
+        
+        // Marcar como inicializado
+        initializationRef.current.add(monthKey);
+        
+        // Salvar após inicialização
+        setTimeout(() => saveDataToStorage(newData), 100);
       }
       
-      // Save after initialization
-      saveDataToStorage(newData);
       return newData;
     });
   }, [saveDataToStorage]);
 
+  // Adicionar valor sem recálculo automático
   const addToDay = useCallback((year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number): void => {
     console.log(`💰 Adding ${amount} to ${type} on ${year}-${month+1}-${day}`);
     
@@ -129,16 +143,11 @@ export const useFinancialData = () => {
       const newValue = currentValue + amount;
       newData[year][month][day][type] = formatCurrency(newValue);
       
-      console.log(`✅ Updated ${type}: ${formatCurrency(currentValue)} + ${formatCurrency(amount)} = ${formatCurrency(newValue)}`);
-      
-      // Recalculate and save
-      const recalculatedData = recalculateBalances(newData, year, month, day);
-      saveDataToStorage(recalculatedData);
-      
-      return recalculatedData;
+      return newData;
     });
-  }, [recalculateBalances, saveDataToStorage]);
+  }, []);
 
+  // Update com recálculo CONTROLADO
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
     const numericValue = parseCurrency(value);
     const formattedValue = formatCurrency(numericValue);
@@ -164,18 +173,19 @@ export const useFinancialData = () => {
       
       // Recalculate and save
       const recalculatedData = recalculateBalances(newData, year, month, day);
-      saveDataToStorage(recalculatedData);
+      setTimeout(() => saveDataToStorage(recalculatedData), 100);
       
       return recalculatedData;
     });
   }, [recalculateBalances, saveDataToStorage]);
 
+  // Trigger manual recalculation
   const triggerCompleteRecalculation = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
     console.log(`🧮 Manual trigger for complete recalculation`);
     
     setData(prevData => {
       const recalculatedData = recalculateBalances(prevData, startYear, startMonth, startDay);
-      saveDataToStorage(recalculatedData);
+      setTimeout(() => saveDataToStorage(recalculatedData), 100);
       return recalculatedData;
     });
   }, [recalculateBalances, saveDataToStorage]);

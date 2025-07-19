@@ -1,4 +1,3 @@
-
 import { useCallback, useRef, useMemo } from 'react';
 import { useFinancialData } from './useFinancialData';
 import { useTransactions, TransactionEntry } from './useTransactions';
@@ -7,64 +6,40 @@ export const useImprovedFinancialSync = () => {
   const financialData = useFinancialData();
   const transactions = useTransactions();
   
-  // Enhanced control for preventing multiple processing
+  // CONTROLE RIGOROSO para prevenir múltiplos processamentos
   const processingRef = useRef<boolean>(false);
   const lastProcessedHashRef = useRef<string>('');
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Create enhanced transaction hash with multiple validation layers
-  const createEnhancedTransactionHash = useCallback((transaction: {
+  // Hash melhorado para transações
+  const createTransactionHash = useCallback((transaction: {
     date: string;
     type: string;
     description: string;
     amount: number;
   }): string => {
-    const baseHash = `${transaction.date}|${transaction.type}|${transaction.description}|${transaction.amount}`;
-    const timestamp = new Date().getTime();
-    return `${baseHash}|${timestamp}`;
+    return `${transaction.date}|${transaction.type}|${transaction.description.toLowerCase().trim()}|${transaction.amount.toFixed(2)}`;
   }, []);
 
-  // Create unique signature for duplicate detection
-  const createTransactionSignature = useCallback((transaction: {
-    date: string;
-    type: string;
-    description: string;
-    amount: number;
-  }): string => {
-    return `${transaction.date}-${transaction.type}-${transaction.description.toLowerCase().trim()}-${transaction.amount.toFixed(2)}`;
-  }, []);
-
-  // Advanced duplicate checker with multiple validation methods
+  // Verificação rigorosa de duplicatas
   const isDuplicateTransaction = useCallback((
     newTransaction: { date: string; type: string; description: string; amount: number },
     existingTransactions: TransactionEntry[]
   ): boolean => {
-    const newSignature = createTransactionSignature(newTransaction);
+    const newSignature = createTransactionHash(newTransaction);
     
-    // For recurring transactions, check more strictly
-    if (newTransaction.description.includes('🔄')) {
-      const exactMatch = existingTransactions.some(t => 
-        t.date === newTransaction.date &&
-        t.type === newTransaction.type &&
-        t.description === newTransaction.description &&
-        Math.abs(t.amount - newTransaction.amount) < 0.01
-      );
-      
-      if (exactMatch) {
-        console.log(`🚫 RECURRING DUPLICATE BLOCKED: ${newTransaction.description} on ${newTransaction.date}`);
-        return true;
-      }
-    }
-    
-    // Standard duplicate check
-    const exactMatch = existingTransactions.some(t => 
-      createTransactionSignature(t) === newSignature
+    const duplicate = existingTransactions.some(t => 
+      createTransactionHash(t) === newSignature
     );
     
-    return exactMatch;
-  }, [createTransactionSignature]);
+    if (duplicate) {
+      console.log(`🚫 DUPLICATE BLOCKED: ${newTransaction.description} on ${newTransaction.date}`);
+    }
+    
+    return duplicate;
+  }, [createTransactionHash]);
 
-  // Optimized rebuild function with incremental updates
+  // Rebuild OTIMIZADO sem loops
   const rebuildFinancialDataFromTransactions = useCallback((): void => {
     if (processingRef.current) {
       console.log('⏭️ Rebuild already in progress, skipping');
@@ -76,14 +51,14 @@ export const useImprovedFinancialSync = () => {
       clearTimeout(debounceTimeoutRef.current);
     }
     
-    // Debounce the rebuild to prevent multiple rapid calls
+    // Debounce the rebuild
     debounceTimeoutRef.current = setTimeout(() => {
       processingRef.current = true;
-      console.log('🔄 Starting OPTIMIZED financial data rebuild');
+      console.log('🔄 Starting CONTROLLED financial data rebuild');
       
       try {
         const allTransactions = transactions.transactions;
-        const transactionsHash = JSON.stringify(allTransactions.map(t => t.id).sort());
+        const transactionsHash = JSON.stringify(allTransactions.map(t => `${t.id}-${t.date}-${t.amount}`).sort());
         
         // Skip rebuild if transactions haven't changed
         if (transactionsHash === lastProcessedHashRef.current) {
@@ -93,6 +68,9 @@ export const useImprovedFinancialSync = () => {
         }
         
         console.log(`📊 Processing ${allTransactions.length} transactions for rebuild`);
+        
+        // Clear all existing financial data first
+        const clearedData = {};
         
         // Group transactions by date for batch processing
         const transactionsByDate: { [date: string]: { entrada: number; saida: number; diario: number } } = {};
@@ -107,36 +85,41 @@ export const useImprovedFinancialSync = () => {
           transactionsByDate[dateKey][transaction.type] += transaction.amount;
         });
         
-        // Apply grouped values efficiently
+        // Apply grouped values to financial data
         Object.entries(transactionsByDate).forEach(([dateKey, values]) => {
           const [year, month, day] = dateKey.split('-').map(Number);
           
           financialData.initializeMonth(year, month - 1);
           
-          // Batch update all values for the day
-          ['entrada', 'saida', 'diario'].forEach(type => {
-            const value = values[type as keyof typeof values];
-            if (value > 0) {
-              const formattedValue = `R$ ${value.toFixed(2).replace('.', ',')}`;
-              financialData.updateDayData(year, month - 1, day, type as 'entrada' | 'saida' | 'diario', formattedValue);
-            }
-          });
+          // Update values efficiently
+          if (values.entrada > 0) {
+            const formattedValue = `R$ ${values.entrada.toFixed(2).replace('.', ',')}`;
+            financialData.updateDayData(year, month - 1, day, 'entrada', formattedValue);
+          }
+          if (values.saida > 0) {
+            const formattedValue = `R$ ${values.saida.toFixed(2).replace('.', ',')}`;
+            financialData.updateDayData(year, month - 1, day, 'saida', formattedValue);
+          }
+          if (values.diario > 0) {
+            const formattedValue = `R$ ${values.diario.toFixed(2).replace('.', ',')}`;
+            financialData.updateDayData(year, month - 1, day, 'diario', formattedValue);
+          }
         });
         
         lastProcessedHashRef.current = transactionsHash;
-        console.log('✅ Optimized financial data rebuild completed');
+        console.log('✅ CONTROLLED financial data rebuild completed');
         
       } catch (error) {
-        console.error('❌ Error in optimized rebuild:', error);
+        console.error('❌ Error in controlled rebuild:', error);
       } finally {
         processingRef.current = false;
       }
-    }, 300); // Reduced debounce for better responsiveness
+    }, 500);
   }, [financialData, transactions]);
 
-  // Enhanced transaction addition with strict duplicate prevention
+  // Add transaction with STRICT duplicate control
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction with ENHANCED duplicate control:', transaction);
+    console.log('🔄 Adding transaction with STRICT control:', transaction);
     
     // Strict duplicate check
     if (isDuplicateTransaction(transaction, transactions.transactions)) {
@@ -146,14 +129,14 @@ export const useImprovedFinancialSync = () => {
     
     try {
       // Add transaction
-      const newTransaction = transactions.addTransaction(transaction);
+      transactions.addTransaction(transaction);
       
-      // Apply to financial data immediately for better performance
+      // Apply to financial data immediately
       const [year, month, day] = transaction.date.split('-').map(Number);
       financialData.initializeMonth(year, month - 1);
       financialData.addToDay(year, month - 1, day, transaction.type, transaction.amount);
       
-      console.log('✅ Transaction added successfully with enhanced control');
+      console.log('✅ Transaction added successfully with strict control');
       
     } catch (error) {
       console.error('❌ Error adding transaction:', error);
@@ -162,21 +145,17 @@ export const useImprovedFinancialSync = () => {
 
   // Optimized update with controlled rebuild
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('✏️ Updating transaction with optimized rebuild:', id);
+    console.log('✏️ Updating transaction with controlled rebuild:', id);
     
     transactions.updateTransaction(id, updates);
-    
-    // Trigger optimized rebuild with debounce
     rebuildFinancialDataFromTransactions();
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
   // Optimized delete with controlled rebuild
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🗑️ Deleting transaction with optimized rebuild:', id);
+    console.log('🗑️ Deleting transaction with controlled rebuild:', id);
     
     transactions.deleteTransaction(id);
-    
-    // Trigger optimized rebuild with debounce
     rebuildFinancialDataFromTransactions();
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
