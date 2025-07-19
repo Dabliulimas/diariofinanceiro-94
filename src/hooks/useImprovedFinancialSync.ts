@@ -1,3 +1,4 @@
+
 import { useCallback, useRef, useMemo } from 'react';
 import { useFinancialData } from './useFinancialData';
 import { useTransactions, TransactionEntry } from './useTransactions';
@@ -39,7 +40,7 @@ export const useImprovedFinancialSync = () => {
     return duplicate;
   }, [createTransactionHash]);
 
-  // Rebuild OTIMIZADO sem loops
+  // Rebuild OTIMIZADO seguindo a lógica financeira correta
   const rebuildFinancialDataFromTransactions = useCallback((): void => {
     if (processingRef.current) {
       console.log('⏭️ Rebuild already in progress, skipping');
@@ -54,7 +55,7 @@ export const useImprovedFinancialSync = () => {
     // Debounce the rebuild
     debounceTimeoutRef.current = setTimeout(() => {
       processingRef.current = true;
-      console.log('🔄 Starting CONTROLLED financial data rebuild');
+      console.log('🔄 Starting CONTROLLED financial data rebuild following specification');
       
       try {
         const allTransactions = transactions.transactions;
@@ -67,10 +68,7 @@ export const useImprovedFinancialSync = () => {
           return;
         }
         
-        console.log(`📊 Processing ${allTransactions.length} transactions for rebuild`);
-        
-        // Clear all existing financial data first
-        const clearedData = {};
+        console.log(`📊 Processing ${allTransactions.length} transactions for CORRECT rebuild`);
         
         // Group transactions by date for batch processing
         const transactionsByDate: { [date: string]: { entrada: number; saida: number; diario: number } } = {};
@@ -85,13 +83,26 @@ export const useImprovedFinancialSync = () => {
           transactionsByDate[dateKey][transaction.type] += transaction.amount;
         });
         
-        // Apply grouped values to financial data
+        // Apply grouped values to financial data and trigger CASCADE recalculation
+        let earliestYear: number | undefined;
+        let earliestMonth: number | undefined;
+        let earliestDay: number | undefined;
+        
         Object.entries(transactionsByDate).forEach(([dateKey, values]) => {
           const [year, month, day] = dateKey.split('-').map(Number);
           
+          // Track earliest change for cascade recalculation
+          if (!earliestYear || year < earliestYear || 
+              (year === earliestYear && month - 1 < (earliestMonth || 0)) ||
+              (year === earliestYear && month - 1 === (earliestMonth || 0) && day < (earliestDay || 0))) {
+            earliestYear = year;
+            earliestMonth = month - 1;
+            earliestDay = day;
+          }
+          
           financialData.initializeMonth(year, month - 1);
           
-          // Update values efficiently
+          // Update values efficiently following specification format
           if (values.entrada > 0) {
             const formattedValue = `R$ ${values.entrada.toFixed(2).replace('.', ',')}`;
             financialData.updateDayData(year, month - 1, day, 'entrada', formattedValue);
@@ -106,20 +117,26 @@ export const useImprovedFinancialSync = () => {
           }
         });
         
+        // Trigger CASCADE recalculation from earliest change following specification
+        if (earliestYear && earliestMonth !== undefined && earliestDay) {
+          console.log(`🧮 Triggering CASCADE recalculation from ${earliestYear}-${earliestMonth + 1}-${earliestDay}`);
+          financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
+        }
+        
         lastProcessedHashRef.current = transactionsHash;
-        console.log('✅ CONTROLLED financial data rebuild completed');
+        console.log('✅ CONTROLLED financial data rebuild completed following specification');
         
       } catch (error) {
         console.error('❌ Error in controlled rebuild:', error);
       } finally {
         processingRef.current = false;
       }
-    }, 500);
+    }, 300); // Reduced debounce for faster response
   }, [financialData, transactions]);
 
   // Add transaction with STRICT duplicate control
   const addTransactionAndSync = useCallback((transaction: Omit<TransactionEntry, 'id' | 'createdAt'>): void => {
-    console.log('🔄 Adding transaction with STRICT control:', transaction);
+    console.log('🔄 Adding transaction with STRICT control following specification:', transaction);
     
     // Strict duplicate check
     if (isDuplicateTransaction(transaction, transactions.transactions)) {
@@ -131,29 +148,32 @@ export const useImprovedFinancialSync = () => {
       // Add transaction
       transactions.addTransaction(transaction);
       
-      // Apply to financial data immediately
+      // Apply to financial data immediately following specification
       const [year, month, day] = transaction.date.split('-').map(Number);
       financialData.initializeMonth(year, month - 1);
       financialData.addToDay(year, month - 1, day, transaction.type, transaction.amount);
       
-      console.log('✅ Transaction added successfully with strict control');
+      // Trigger CASCADE recalculation from this point following specification
+      financialData.recalculateBalances(year, month - 1, day);
+      
+      console.log('✅ Transaction added with CASCADE recalculation following specification');
       
     } catch (error) {
       console.error('❌ Error adding transaction:', error);
     }
   }, [transactions, financialData, isDuplicateTransaction]);
 
-  // Optimized update with controlled rebuild
+  // Update with controlled rebuild
   const updateTransactionAndSync = useCallback((id: string, updates: Partial<TransactionEntry>): void => {
-    console.log('✏️ Updating transaction with controlled rebuild:', id);
+    console.log('✏️ Updating transaction with controlled rebuild following specification:', id);
     
     transactions.updateTransaction(id, updates);
     rebuildFinancialDataFromTransactions();
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
-  // Optimized delete with controlled rebuild
+  // Delete with controlled rebuild
   const deleteTransactionAndSync = useCallback((id: string): void => {
-    console.log('🗑️ Deleting transaction with controlled rebuild:', id);
+    console.log('🗑️ Deleting transaction with controlled rebuild following specification:', id);
     
     transactions.deleteTransaction(id);
     rebuildFinancialDataFromTransactions();
@@ -172,7 +192,7 @@ export const useImprovedFinancialSync = () => {
     ...financialData,
     ...transactions,
     addTransactionAndSync,
-    updateTransactionAndSync,
+    updateTransactionAndSync,  
     deleteTransactionAndSync,
     forceRecalculation: rebuildFinancialDataFromTransactions,
     rebuildFinancialDataFromTransactions,

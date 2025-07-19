@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
@@ -22,27 +23,29 @@ export const useFinancialData = () => {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   
-  // CONTROLE CRÍTICO: Prevenir loops infinitos
+  // CONTROLES RIGOROSOS para evitar loops e processamentos múltiplos
   const isLoadingRef = useRef<boolean>(false);
   const isSavingRef = useRef<boolean>(false);
+  const isRecalculatingRef = useRef<boolean>(false);
   const lastSavedDataRef = useRef<string>('');
   const initializationRef = useRef<Set<string>>(new Set());
 
-  const { recalculateBalances } = useBalancePropagation();
+  const { recalculateBalances, getDaysInMonth } = useBalancePropagation();
 
-  // Load data APENAS uma vez no mount
+  // Load data APENAS uma vez no mount - SEM LOOPS
   useEffect(() => {
     if (isLoadingRef.current) return;
     
     isLoadingRef.current = true;
-    const savedData = localStorage.getItem('financialData');
+    console.log('💾 Loading financial data from localStorage - ONE TIME ONLY');
     
+    const savedData = localStorage.getItem('financialData');
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
-        console.log('💾 Loading financial data from localStorage');
         setData(parsed || {});
         lastSavedDataRef.current = savedData;
+        console.log('✅ Financial data loaded successfully');
       } catch (error) {
         console.error('❌ Error loading financial data:', error);
         setData({});
@@ -50,15 +53,15 @@ export const useFinancialData = () => {
     }
     
     isLoadingRef.current = false;
-  }, []);
+  }, []); // Array vazio - executa APENAS no mount
 
-  // Save data CONTROLADO
+  // Save data CONTROLADO sem loops
   const saveDataToStorage = useCallback((dataToSave: FinancialData) => {
     if (isSavingRef.current) return;
     if (Object.keys(dataToSave).length === 0) return;
     
     const dataString = JSON.stringify(dataToSave);
-    if (dataString === lastSavedDataRef.current) return;
+    if (dataString === lastSavedDataRef.current) return; // Evita salvamento duplicado
     
     isSavingRef.current = true;
     
@@ -73,11 +76,7 @@ export const useFinancialData = () => {
     }
   }, []);
 
-  const getDaysInMonth = (year: number, month: number): number => {
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  // Inicialização CONTROLADA sem loops
+  // Inicialização CONTROLADA de mês sem loops
   const initializeMonth = useCallback((year: number, month: number): void => {
     const monthKey = `${year}-${month}`;
     
@@ -86,7 +85,7 @@ export const useFinancialData = () => {
       return;
     }
     
-    console.log(`🏗️ Initializing month ${month + 1}/${year}`);
+    console.log(`🏗️ Initializing month ${month + 1}/${year} - CONTROLLED`);
     
     setData(prevData => {
       const newData = { ...prevData };
@@ -99,6 +98,7 @@ export const useFinancialData = () => {
         newData[year][month] = {};
         const daysInMonth = getDaysInMonth(year, month);
         
+        // Inicializar todos os dias do mês com valores zerados
         for (let day = 1; day <= daysInMonth; day++) {
           newData[year][month][day] = {
             entrada: "R$ 0,00",
@@ -117,9 +117,9 @@ export const useFinancialData = () => {
       
       return newData;
     });
-  }, [saveDataToStorage]);
+  }, [saveDataToStorage, getDaysInMonth]);
 
-  // Adicionar valor sem recálculo automático
+  // Adicionar valor a um dia específico (sem recálculo automático)
   const addToDay = useCallback((year: number, month: number, day: number, type: 'entrada' | 'saida' | 'diario', amount: number): void => {
     console.log(`💰 Adding ${amount} to ${type} on ${year}-${month+1}-${day}`);
     
@@ -147,12 +147,14 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // Update com recálculo CONTROLADO
+  // Update com recálculo em cascata CORRETO conforme especificação
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
+    if (isRecalculatingRef.current) return; // Evita loops de recálculo
+    
     const numericValue = parseCurrency(value);
     const formattedValue = formatCurrency(numericValue);
     
-    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue}`);
+    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue} - TRIGGERS CASCADE`);
     
     setData(prevData => {
       const newData = { ...prevData };
@@ -168,28 +170,38 @@ export const useFinancialData = () => {
         };
       }
       
-      // Update value
+      // Update field
       newData[year][month][day][field] = formattedValue;
       
-      // Recalculate and save
+      // RECÁLCULO EM CASCATA a partir do ponto alterado (conforme especificação)
+      isRecalculatingRef.current = true;
       const recalculatedData = recalculateBalances(newData, year, month, day);
+      isRecalculatingRef.current = false;
+      
+      // Save after recalculation
       setTimeout(() => saveDataToStorage(recalculatedData), 100);
       
       return recalculatedData;
     });
   }, [recalculateBalances, saveDataToStorage]);
 
-  // Trigger manual recalculation
+  // Trigger manual recalculation (para casos específicos)
   const triggerCompleteRecalculation = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
-    console.log(`🧮 Manual trigger for complete recalculation`);
+    if (isRecalculatingRef.current) return;
+    
+    console.log(`🧮 Manual complete recalculation triggered`);
     
     setData(prevData => {
+      isRecalculatingRef.current = true;
       const recalculatedData = recalculateBalances(prevData, startYear, startMonth, startDay);
+      isRecalculatingRef.current = false;
+      
       setTimeout(() => saveDataToStorage(recalculatedData), 100);
       return recalculatedData;
     });
   }, [recalculateBalances, saveDataToStorage]);
 
+  // Cálculos de totais mensais
   const getMonthlyTotals = useCallback((year: number, month: number) => {
     if (!data[year] || !data[year][month]) {
       return {
@@ -213,7 +225,7 @@ export const useFinancialData = () => {
       totalEntradas += parseCurrency(dayData.entrada);
       totalSaidas += parseCurrency(dayData.saida);
       totalDiario += parseCurrency(dayData.diario);
-      saldoFinal = dayData.balance;
+      saldoFinal = dayData.balance; // Último saldo calculado
     }
     
     return {
@@ -224,6 +236,7 @@ export const useFinancialData = () => {
     };
   }, [data]);
 
+  // Cálculos de totais anuais
   const getYearlyTotals = useCallback((year: number) => {
     if (!data[year]) {
       return {
@@ -245,6 +258,7 @@ export const useFinancialData = () => {
       totalSaidas += monthlyTotals.totalSaidas;
       totalDiario += monthlyTotals.totalDiario;
       
+      // O saldo final é sempre o último saldo válido do ano
       if (data[year][month]) {
         saldoFinal = monthlyTotals.saldoFinal;
       }
