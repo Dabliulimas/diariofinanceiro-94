@@ -40,6 +40,22 @@ export const useImprovedFinancialSync = () => {
     return duplicate;
   }, [createTransactionHash]);
 
+  // Função para contar transações em uma data específica
+  const countTransactionsForDate = useCallback((date: string): {
+    entrada: number;
+    saida: number;
+    diario: number;
+    total: number;
+  } => {
+    const dateTransactions = transactions.transactions.filter(t => t.date === date);
+    return {
+      entrada: dateTransactions.filter(t => t.type === 'entrada').length,
+      saida: dateTransactions.filter(t => t.type === 'saida').length,
+      diario: dateTransactions.filter(t => t.type === 'diario').length,
+      total: dateTransactions.length
+    };
+  }, [transactions.transactions]);
+
   // Rebuild OTIMIZADO seguindo a lógica financeira correta
   const rebuildFinancialDataFromTransactions = useCallback((): void => {
     if (processingRef.current) {
@@ -70,7 +86,27 @@ export const useImprovedFinancialSync = () => {
         
         console.log(`📊 Processing ${allTransactions.length} transactions for CORRECT rebuild`);
         
-        // Group transactions by date for batch processing
+        // PRIMEIRO: Limpar todos os valores existentes para R$ 0,00
+        const currentData = financialData.data;
+        const years = Object.keys(currentData).map(Number).sort();
+        
+        for (const year of years) {
+          for (let month = 0; month < 12; month++) {
+            if (currentData[year] && currentData[year][month]) {
+              const monthData = currentData[year][month];
+              const days = Object.keys(monthData).map(Number).sort();
+              
+              for (const day of days) {
+                // Resetar valores para zero, mantendo estrutura
+                financialData.updateDayData(year, month, day, 'entrada', 'R$ 0,00');
+                financialData.updateDayData(year, month, day, 'saida', 'R$ 0,00');
+                financialData.updateDayData(year, month, day, 'diario', 'R$ 0,00');
+              }
+            }
+          }
+        }
+        
+        // SEGUNDO: Reagrupar e aplicar transações
         const transactionsByDate: { [date: string]: { entrada: number; saida: number; diario: number } } = {};
         
         allTransactions.forEach(transaction => {
@@ -83,7 +119,7 @@ export const useImprovedFinancialSync = () => {
           transactionsByDate[dateKey][transaction.type] += transaction.amount;
         });
         
-        // Apply grouped values to financial data and trigger CASCADE recalculation
+        // TERCEIRO: Aplicar valores agrupados aos dados financeiros
         let earliestYear: number | undefined;
         let earliestMonth: number | undefined;
         let earliestDay: number | undefined;
@@ -117,14 +153,18 @@ export const useImprovedFinancialSync = () => {
           }
         });
         
-        // Trigger CASCADE recalculation from earliest change following specification
+        // QUARTO: Trigger CASCADE recalculation from earliest change
         if (earliestYear && earliestMonth !== undefined && earliestDay) {
           console.log(`🧮 Triggering CASCADE recalculation from ${earliestYear}-${earliestMonth + 1}-${earliestDay}`);
           financialData.recalculateBalances(earliestYear, earliestMonth, earliestDay);
+        } else {
+          // Se não há transações, recalcular tudo do início
+          console.log('🧮 No transactions found, triggering full recalculation');
+          financialData.recalculateBalances();
         }
         
         lastProcessedHashRef.current = transactionsHash;
-        console.log('✅ CONTROLLED financial data rebuild completed following specification');
+        console.log('✅ CONTROLLED financial data rebuild completed with proper cleanup');
         
       } catch (error) {
         console.error('❌ Error in controlled rebuild:', error);
@@ -171,13 +211,38 @@ export const useImprovedFinancialSync = () => {
     rebuildFinancialDataFromTransactions();
   }, [transactions, rebuildFinancialDataFromTransactions]);
 
-  // Delete with controlled rebuild
+  // Delete with validation and controlled rebuild
   const deleteTransactionAndSync = useCallback((id: string): void => {
     console.log('🗑️ Deleting transaction with controlled rebuild following specification:', id);
     
+    // Encontrar a transação para validar múltiplos lançamentos
+    const transactionToDelete = transactions.transactions.find(t => t.id === id);
+    if (!transactionToDelete) {
+      console.log('❌ Transaction not found for deletion');
+      return;
+    }
+    
+    // Contar transações na mesma data
+    const transactionsCount = countTransactionsForDate(transactionToDelete.date);
+    
+    // Se há múltiplas transações na mesma data, avisar o usuário
+    if (transactionsCount.total > 1) {
+      const confirmMessage = `⚠️ ATENÇÃO: Há ${transactionsCount.total} lançamentos em ${transactionToDelete.date}:\n` +
+        `• Entradas: ${transactionsCount.entrada}\n` +
+        `• Saídas: ${transactionsCount.saida}\n` +
+        `• Diário: ${transactionsCount.diario}\n\n` +
+        `Você está deletando: ${transactionToDelete.type} - ${transactionToDelete.description} - R$ ${transactionToDelete.amount.toFixed(2).replace('.', ',')}\n\n` +
+        `Deseja realmente continuar? Os outros lançamentos desta data não serão afetados.`;
+      
+      if (!confirm(confirmMessage)) {
+        console.log('🚫 Deletion cancelled by user');
+        return;
+      }
+    }
+    
     transactions.deleteTransaction(id);
     rebuildFinancialDataFromTransactions();
-  }, [transactions, rebuildFinancialDataFromTransactions]);
+  }, [transactions, rebuildFinancialDataFromTransactions, countTransactionsForDate]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -196,6 +261,7 @@ export const useImprovedFinancialSync = () => {
     deleteTransactionAndSync,
     forceRecalculation: rebuildFinancialDataFromTransactions,
     rebuildFinancialDataFromTransactions,
+    countTransactionsForDate,
     cleanup
   }), [
     financialData,
@@ -204,6 +270,7 @@ export const useImprovedFinancialSync = () => {
     updateTransactionAndSync,  
     deleteTransactionAndSync,
     rebuildFinancialDataFromTransactions,
+    countTransactionsForDate,
     cleanup
   ]);
 

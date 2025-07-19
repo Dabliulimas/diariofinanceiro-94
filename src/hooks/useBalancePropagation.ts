@@ -18,19 +18,27 @@ export const useBalancePropagation = () => {
     return daysPerMonth[month];
   }, [isLeapYear]);
 
-  // Função para obter o último saldo válido de dezembro
+  // Função CORRIGIDA para obter o último saldo válido de dezembro
   const getLastDecemberBalance = useCallback((data: FinancialData, year: number): number => {
     console.log(`🔍 Getting last December balance for year ${year}`);
     
-    if (!data[year] || !data[year][11]) {
-      console.log(`❌ No December data found for year ${year}, returning 0`);
+    // Verificar se o ano existe
+    if (!data[year]) {
+      console.log(`❌ Year ${year} not found, returning 0`);
       return 0;
     }
     
-    // Procura o último dia disponível em dezembro (31, 30, 29...)
+    // Verificar se dezembro existe
+    if (!data[year][11]) {
+      console.log(`❌ December ${year} not found, returning 0`);
+      return 0;
+    }
+    
+    // Procurar o último dia válido de dezembro (31, 30, 29...)
+    const decemberData = data[year][11];
     for (let day = 31; day >= 1; day--) {
-      if (data[year][11][day] && typeof data[year][11][day].balance === 'number') {
-        const balance = data[year][11][day].balance;
+      if (decemberData[day] && typeof decemberData[day].balance === 'number') {
+        const balance = decemberData[day].balance;
         console.log(`✅ Found December ${day}, ${year} balance: ${balance}`);
         return balance;
       }
@@ -40,59 +48,35 @@ export const useBalancePropagation = () => {
     return 0;
   }, []);
 
-  // Função para obter o último saldo válido do mês anterior
-  const getLastMonthBalance = useCallback((data: FinancialData, year: number, month: number): number => {
-    const prevMonth = month - 1;
-    const daysInPrevMonth = getDaysInMonth(year, prevMonth);
-    
-    console.log(`🔍 Getting last balance from month ${prevMonth + 1}/${year}`);
-    
-    if (!data[year] || !data[year][prevMonth]) {
-      console.log(`❌ No data found for month ${prevMonth + 1}/${year}, returning 0`);
-      return 0;
-    }
-    
-    // Procura o último dia disponível do mês anterior
-    for (let day = daysInPrevMonth; day >= 1; day--) {
-      if (data[year][prevMonth][day] && typeof data[year][prevMonth][day].balance === 'number') {
-        const balance = data[year][prevMonth][day].balance;
-        console.log(`✅ Found ${prevMonth + 1}/${day}/${year} balance: ${balance}`);
-        return balance;
-      }
-    }
-    
-    console.log(`❌ No valid balance found for month ${prevMonth + 1}/${year}, returning 0`);
-    return 0;
-  }, [getDaysInMonth]);
-
-  // Função para obter saldo anterior CORRETO seguindo as regras da especificação
-  const getPreviousBalance = useCallback((data: FinancialData, year: number, month: number, day: number): number => {
-    if (day === 1) {
-      if (month === 0) {
-        // 1º de Janeiro - herdar saldo de 31 de dezembro do ano anterior
-        const previousYearBalance = getLastDecemberBalance(data, year - 1);
-        console.log(`🎯 Jan 1, ${year}: inheriting from Dec 31, ${year - 1} = ${previousYearBalance}`);
-        return previousYearBalance;
-      } else {
-        // 1º do mês (não Janeiro) - herdar saldo do último dia do mês anterior
-        const prevMonthBalance = getLastMonthBalance(data, year, month);
-        console.log(`🎯 ${month + 1}/1/${year}: inheriting from previous month = ${prevMonthBalance}`);
-        return prevMonthBalance;
-      }
+  // Função CORRIGIDA para obter o saldo inicial correto para qualquer mês
+  const getInitialBalanceForMonth = useCallback((data: FinancialData, year: number, month: number): number => {
+    if (month === 0) {
+      // Janeiro - herdar de dezembro do ano anterior
+      const previousYearBalance = getLastDecemberBalance(data, year - 1);
+      console.log(`🎯 Initial balance for Jan ${year}: ${previousYearBalance} (from Dec ${year - 1})`);
+      return previousYearBalance;
     } else {
-      // Dia normal - herdar do dia anterior no mesmo mês
-      if (data[year] && data[year][month] && data[year][month][day - 1] &&
-          typeof data[year][month][day - 1].balance === 'number') {
-        const balance = data[year][month][day - 1].balance;
-        console.log(`🎯 ${month + 1}/${day}/${year}: inheriting from previous day = ${balance}`);
-        return balance;
+      // Outros meses - herdar do último dia do mês anterior
+      const prevMonth = month - 1;
+      const daysInPrevMonth = getDaysInMonth(year, prevMonth);
+      
+      if (data[year] && data[year][prevMonth]) {
+        const prevMonthData = data[year][prevMonth];
+        for (let day = daysInPrevMonth; day >= 1; day--) {
+          if (prevMonthData[day] && typeof prevMonthData[day].balance === 'number') {
+            const balance = prevMonthData[day].balance;
+            console.log(`🎯 Initial balance for ${month + 1}/${year}: ${balance} (from ${prevMonth + 1}/${day}/${year})`);
+            return balance;
+          }
+        }
       }
-      console.log(`❌ No previous day balance found for ${month + 1}/${day}/${year}, returning 0`);
+      
+      console.log(`🎯 No previous balance found for ${month + 1}/${year}, using 0`);
       return 0;
     }
-  }, [getLastDecemberBalance, getLastMonthBalance]);
+  }, [getLastDecemberBalance, getDaysInMonth]);
 
-  // Função de recálculo em cascata CORRETA seguindo a especificação
+  // Função CORRIGIDA de recálculo em cascata com propagação entre anos
   const recalculateBalances = useCallback((
     data: FinancialData,
     startYear?: number,
@@ -134,13 +118,23 @@ export const useBalancePropagation = () => {
           
           const dayData = newData[year][month][day];
           
-          // Parse dos valores do dia atual
-          const entrada = parseCurrency(dayData.entrada);
-          const saida = parseCurrency(dayData.saida);
-          const diario = parseCurrency(dayData.diario);
+          // Parse dos valores do dia atual - CORRIGIDO para tratar valores vazios
+          const entrada = dayData.entrada ? parseCurrency(dayData.entrada) : 0;
+          const saida = dayData.saida ? parseCurrency(dayData.saida) : 0;
+          const diario = dayData.diario ? parseCurrency(dayData.diario) : 0;
           
-          // Obter saldo anterior seguindo as regras da especificação
-          const previousBalance = getPreviousBalance(newData, year, month, day);
+          // Obter saldo anterior CORRETO seguindo as regras da especificação
+          let previousBalance = 0;
+          
+          if (day === 1) {
+            // Primeiro dia do mês
+            previousBalance = getInitialBalanceForMonth(newData, year, month);
+          } else {
+            // Dia normal - herdar do dia anterior no mesmo mês
+            if (newData[year][month][day - 1] && typeof newData[year][month][day - 1].balance === 'number') {
+              previousBalance = newData[year][month][day - 1].balance;
+            }
+          }
           
           // FÓRMULA FUNDAMENTAL da especificação:
           // Saldo Atual = Saldo Anterior + Entrada - Saída - Diário
@@ -154,13 +148,14 @@ export const useBalancePropagation = () => {
       }
     }
     
-    console.log('✅ CASCADE recalculation completed following specification');
+    console.log('✅ CASCADE recalculation completed with year-end propagation');
     return newData;
-  }, [getPreviousBalance, getDaysInMonth]);
+  }, [getDaysInMonth, getInitialBalanceForMonth]);
 
   return {
     recalculateBalances,
     getLastDecemberBalance,
+    getInitialBalanceForMonth,
     getDaysInMonth,
     isLeapYear
   };

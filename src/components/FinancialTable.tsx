@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FluidNumberInput } from './FluidNumberInput';
 import { FinancialData } from '../hooks/useFinancialData';
@@ -7,6 +7,7 @@ import { formatCurrency } from '../utils/currencyUtils';
 import { TransactionEntry } from '../hooks/useTransactions';
 import { Edit, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
+import TransactionDeleteConfirmation from './TransactionDeleteConfirmation';
 
 interface FinancialTableProps {
   selectedYear: number;
@@ -34,6 +35,9 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   deleteTransactionAndSync
 }) => {
   const navigate = useNavigate();
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<TransactionEntry | null>(null);
+  const [allTransactionsForDate, setAllTransactionsForDate] = useState<TransactionEntry[]>([]);
 
   const monthNames = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -56,11 +60,38 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
     navigate(`/quick-entry?date=${dateString}&editId=${transaction.id}`);
   };
 
-  // Handle delete transaction
-  const handleDeleteTransaction = (transactionId: string) => {
-    if (window.confirm('Deseja realmente excluir este lançamento?')) {
-      deleteTransactionAndSync(transactionId);
+  // Handle delete transaction with confirmation
+  const handleDeleteTransaction = (transaction: TransactionEntry) => {
+    const dateTransactions = getTransactionsByDate(transaction.date);
+    
+    if (dateTransactions.length > 1) {
+      // Múltiplas transações - mostrar confirmação
+      setTransactionToDelete(transaction);
+      setAllTransactionsForDate(dateTransactions);
+      setShowDeleteConfirmation(true);
+    } else {
+      // Única transação - confirmar simples
+      if (window.confirm(`Deseja realmente excluir este lançamento?\n\n${transaction.description}\nR$ ${transaction.amount.toFixed(2).replace('.', ',')}`)) {
+        deleteTransactionAndSync(transaction.id);
+      }
     }
+  };
+
+  // Confirm deletion
+  const handleConfirmDeletion = () => {
+    if (transactionToDelete) {
+      deleteTransactionAndSync(transactionToDelete.id);
+      setShowDeleteConfirmation(false);
+      setTransactionToDelete(null);
+      setAllTransactionsForDate([]);
+    }
+  };
+
+  // Cancel deletion
+  const handleCancelDeletion = () => {
+    setShowDeleteConfirmation(false);
+    setTransactionToDelete(null);
+    setAllTransactionsForDate([]);
   };
 
   const renderDayRow = (day: number) => {
@@ -87,7 +118,16 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
         >
           <div className="flex items-center justify-center gap-1">
             {day}
-            {hasTransactions && <span className="text-xs">📝</span>}
+            {hasTransactions && (
+              <div className="flex items-center gap-1">
+                <span className="text-xs">📝</span>
+                {dayTransactions.length > 1 && (
+                  <span className="text-xs bg-blue-100 text-blue-600 px-1 rounded">
+                    {dayTransactions.length}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </td>
         
@@ -102,13 +142,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
             />
             {hasTransactions && (
               <div className="flex gap-1">
-                {dayTransactions.filter(t => t.type === 'entrada').length > 0 && (
-                  <>
+                {dayTransactions.filter(t => t.type === 'entrada').map(transaction => (
+                  <div key={transaction.id} className="flex gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-green-100"
-                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'entrada')!)}
+                      onClick={() => handleEditTransaction(transaction)}
                       title="Editar lançamento de entrada"
                     >
                       <Edit className="h-3 w-3 text-green-600" />
@@ -117,13 +157,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-red-100"
-                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'entrada')!.id)}
+                      onClick={() => handleDeleteTransaction(transaction)}
                       title="Excluir lançamento de entrada"
                     >
                       <Trash2 className="h-3 w-3 text-red-600" />
                     </Button>
-                  </>
-                )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -140,13 +180,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
             />
             {hasTransactions && (
               <div className="flex gap-1">
-                {dayTransactions.filter(t => t.type === 'saida').length > 0 && (
-                  <>
+                {dayTransactions.filter(t => t.type === 'saida').map(transaction => (
+                  <div key={transaction.id} className="flex gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-red-100"
-                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'saida')!)}
+                      onClick={() => handleEditTransaction(transaction)}
                       title="Editar lançamento de saída"
                     >
                       <Edit className="h-3 w-3 text-red-600" />
@@ -155,13 +195,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-red-100"
-                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'saida')!.id)}
+                      onClick={() => handleDeleteTransaction(transaction)}
                       title="Excluir lançamento de saída"
                     >
                       <Trash2 className="h-3 w-3 text-red-600" />
                     </Button>
-                  </>
-                )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -178,13 +218,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
             />
             {hasTransactions && (
               <div className="flex gap-1">
-                {dayTransactions.filter(t => t.type === 'diario').length > 0 && (
-                  <>
+                {dayTransactions.filter(t => t.type === 'diario').map(transaction => (
+                  <div key={transaction.id} className="flex gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-blue-100"
-                      onClick={() => handleEditTransaction(dayTransactions.find(t => t.type === 'diario')!)}
+                      onClick={() => handleEditTransaction(transaction)}
                       title="Editar lançamento diário"
                     >
                       <Edit className="h-3 w-3 text-blue-600" />
@@ -193,13 +233,13 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
                       size="sm"
                       variant="ghost"
                       className="h-6 w-6 p-0 hover:bg-red-100"
-                      onClick={() => handleDeleteTransaction(dayTransactions.find(t => t.type === 'diario')!.id)}
+                      onClick={() => handleDeleteTransaction(transaction)}
                       title="Excluir lançamento diário"
                     >
                       <Trash2 className="h-3 w-3 text-red-600" />
                     </Button>
-                  </>
-                )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -215,43 +255,55 @@ const FinancialTable: React.FC<FinancialTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg mb-4 sm:mb-6 md:mb-8 overflow-hidden">
-      <div className="p-3 sm:p-4 md:p-6 border-b border-gray-200">
-        <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-900">
-          {monthNames[selectedMonth]} {selectedYear}
-        </h2>
-        <p className="text-sm text-gray-600 mt-1">
-          💡 Clique no número do dia para fazer lançamentos detalhados (📝 indica dias com lançamentos) | ✏️ Editar | 🗑️ Excluir
-        </p>
+    <>
+      <div className="bg-white rounded-xl shadow-lg mb-4 sm:mb-6 md:mb-8 overflow-hidden">
+        <div className="p-3 sm:p-4 md:p-6 border-b border-gray-200">
+          <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-900">
+            {monthNames[selectedMonth]} {selectedYear}
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            💡 Clique no número do dia para fazer lançamentos detalhados (📝 indica dias com lançamentos, número indica quantidade) | ✏️ Editar | 🗑️ Excluir
+          </p>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="py-2 sm:py-3 px-2 sm:px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                  Dia
+                </th>
+                <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-green-600 uppercase tracking-wider">
+                  Entrada
+                </th>
+                <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-red-600 uppercase tracking-wider">
+                  Saída
+                </th>
+                <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">
+                  Diário
+                </th>
+                <th className="py-2 sm:py-3 px-2 sm:px-4 text-left text-xs font-medium text-purple-600 uppercase tracking-wider">
+                  Saldo
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {Array.from({ length: daysInMonth }, (_, i) => renderDayRow(i + 1))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="py-2 sm:py-3 px-2 sm:px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                Dia
-              </th>
-              <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-green-600 uppercase tracking-wider">
-                Entrada
-              </th>
-              <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-red-600 uppercase tracking-wider">
-                Saída
-              </th>
-              <th className="py-2 sm:py-3 px-1 sm:px-4 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">
-                Diário
-              </th>
-              <th className="py-2 sm:py-3 px-2 sm:px-4 text-left text-xs font-medium text-purple-600 uppercase tracking-wider">
-                Saldo
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
-            {Array.from({ length: daysInMonth }, (_, i) => renderDayRow(i + 1))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+
+      {transactionToDelete && (
+        <TransactionDeleteConfirmation
+          isOpen={showDeleteConfirmation}
+          onClose={handleCancelDeletion}
+          onConfirm={handleConfirmDeletion}
+          transactionToDelete={transactionToDelete}
+          allTransactionsForDate={allTransactionsForDate}
+        />
+      )}
+    </>
   );
 };
 

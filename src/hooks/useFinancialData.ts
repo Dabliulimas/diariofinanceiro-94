@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatCurrency, parseCurrency } from '../utils/currencyUtils';
 import { useBalancePropagation } from './useBalancePropagation';
@@ -26,10 +27,11 @@ export const useFinancialData = () => {
   const isLoadingRef = useRef<boolean>(false);
   const isSavingRef = useRef<boolean>(false);
   const isRecalculatingRef = useRef<boolean>(false);
+  const isUpdatingRef = useRef<boolean>(false);
   const lastSavedDataRef = useRef<string>('');
   const initializationRef = useRef<Set<string>>(new Set());
 
-  const { recalculateBalances, getDaysInMonth, getLastDecemberBalance } = useBalancePropagation();
+  const { recalculateBalances, getDaysInMonth, getInitialBalanceForMonth } = useBalancePropagation();
 
   // Load data APENAS uma vez no mount - SEM LOOPS
   useEffect(() => {
@@ -75,33 +77,6 @@ export const useFinancialData = () => {
     }
   }, []);
 
-  // Função para obter saldo inicial correto para um mês
-  const getInitialBalanceForMonth = useCallback((currentData: FinancialData, year: number, month: number): number => {
-    if (month === 0) {
-      // Janeiro - herda de dezembro do ano anterior
-      const previousYearBalance = getLastDecemberBalance(currentData, year - 1);
-      console.log(`🎯 Initial balance for Jan ${year}: ${previousYearBalance} (from Dec ${year - 1})`);
-      return previousYearBalance;
-    } else {
-      // Outros meses - herdam do último dia do mês anterior
-      const prevMonth = month - 1;
-      const daysInPrevMonth = getDaysInMonth(year, prevMonth);
-      
-      if (currentData[year] && currentData[year][prevMonth]) {
-        for (let day = daysInPrevMonth; day >= 1; day--) {
-          if (currentData[year][prevMonth][day] && typeof currentData[year][prevMonth][day].balance === 'number') {
-            const balance = currentData[year][prevMonth][day].balance;
-            console.log(`🎯 Initial balance for ${month + 1}/${year}: ${balance} (from ${prevMonth + 1}/${day}/${year})`);
-            return balance;
-          }
-        }
-      }
-      
-      console.log(`🎯 No previous balance found for ${month + 1}/${year}, using 0`);
-      return 0;
-    }
-  }, [getLastDecemberBalance, getDaysInMonth]);
-
   // Inicialização CONTROLADA de mês sem loops
   const initializeMonth = useCallback((year: number, month: number): void => {
     const monthKey = `${year}-${month}`;
@@ -137,10 +112,9 @@ export const useFinancialData = () => {
           };
         }
         
-        // Se não é o primeiro dia do mês, recalcular saldos
+        // Se há saldo inicial, recalcular saldos para este mês
         if (initialBalance !== 0) {
           console.log(`🧮 Recalculating balances for ${month + 1}/${year} with initial balance ${initialBalance}`);
-          // Aplicar recálculo apenas para este mês
           const recalculatedData = recalculateBalances(newData, year, month, 1);
           Object.assign(newData, recalculatedData);
         }
@@ -184,14 +158,29 @@ export const useFinancialData = () => {
     });
   }, []);
 
-  // Update com recálculo em cascata CORRETO conforme especificação
+  // Update CORRIGIDO com validação de valores vazios e recálculo em cascata
   const updateDayData = useCallback((year: number, month: number, day: number, field: keyof Omit<DayData, 'balance'>, value: string): void => {
-    if (isRecalculatingRef.current) return; // Evita loops de recálculo
+    if (isRecalculatingRef.current || isUpdatingRef.current) return; // Evita loops de recálculo
     
-    const numericValue = parseCurrency(value);
-    const formattedValue = formatCurrency(numericValue);
+    isUpdatingRef.current = true;
     
-    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue} - TRIGGERS CASCADE`);
+    // CORRIGIDO: Tratar valores vazios como zero
+    let numericValue = 0;
+    let formattedValue = "R$ 0,00";
+    
+    if (value && value.trim() !== '') {
+      const trimmedValue = value.trim();
+      // Se o valor é apenas "R$" ou similar, tratar como zero
+      if (trimmedValue === 'R$' || trimmedValue === 'R$ ' || trimmedValue === 'R$ 0' || trimmedValue === 'R$ 0,00') {
+        numericValue = 0;
+        formattedValue = "R$ 0,00";
+      } else {
+        numericValue = parseCurrency(trimmedValue);
+        formattedValue = formatCurrency(numericValue);
+      }
+    }
+    
+    console.log(`📝 Manual update: ${year}-${month+1}-${day} ${field} = ${formattedValue} (from: "${value}") - TRIGGERS CASCADE`);
     
     setData(prevData => {
       const newData = { ...prevData };
@@ -207,7 +196,7 @@ export const useFinancialData = () => {
         };
       }
       
-      // Update field
+      // Update field with formatted value
       newData[year][month][day][field] = formattedValue;
       
       // RECÁLCULO EM CASCATA a partir do ponto alterado (conforme especificação)
@@ -218,6 +207,7 @@ export const useFinancialData = () => {
       // Save after recalculation
       setTimeout(() => saveDataToStorage(recalculatedData), 100);
       
+      isUpdatingRef.current = false;
       return recalculatedData;
     });
   }, [recalculateBalances, saveDataToStorage]);
@@ -226,7 +216,7 @@ export const useFinancialData = () => {
   const triggerCompleteRecalculation = useCallback((startYear?: number, startMonth?: number, startDay?: number): void => {
     if (isRecalculatingRef.current) return;
     
-    console.log(`🧮 Manual complete recalculation triggered`);
+    console.log(`🧮 Manual complete recalculation triggered from ${startYear}-${startMonth}-${startDay}`);
     
     setData(prevData => {
       isRecalculatingRef.current = true;
